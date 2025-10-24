@@ -1,73 +1,58 @@
-# React + TypeScript + Vite
+# Conway Game (React + TypeScript + Tailwind)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Quick instructions to run this project locally.
 
-Currently, two official plugins are available:
+## Prerequisites
+- Node.js (recommended >= 16)
+- npm (comes with Node) or yarn
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Install
+Open a terminal and run:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd c:\Personal_Projects\conway_game
+npm install
+# or
+# yarn
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Run in development
+Depending on how the project was scaffolded:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- If the project uses Vite (common for modern React + TS setups):
+  ```bash
+  npm run dev
+  ```
+  Open: http://localhost:5173
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- If the project uses Create React App:
+  ```bash
+  npm start
+  ```
+  Open: http://localhost:3000
+
+If you're unsure which to use, check `package.json` scripts (look for `dev`, `start`, or `preview`).
+
+## Build for production
+```bash
+npm run build
 ```
+- For Vite you can preview the built app with:
+  ```bash
+  npm run preview
+  ```
+- Or serve `dist` with any static server:
+  ```bash
+  npx serve -s dist
+  ```
+
+## Troubleshooting
+- If the port is already in use, the dev server will suggest another port or you can stop the conflicting process.
+- If Tailwind styles don't appear, ensure PostCSS/Tailwind config is present and that the dev server is restarted after adding configs.
+- Check the terminal output for errors and refer to `package.json` scripts for exact commands.
+
+## Notes
+- This repository contains React + TypeScript source under `src/` (example: `src/App.tsx`).
+- Adjust commands if you prefer `yarn` instead of `npm`.
+
+Enjoy developing!
