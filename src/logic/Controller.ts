@@ -18,8 +18,5 @@ export default class Controller {
   toggleAt(gx: number, gy: number) {
     this.manager.toggleAt(gx, gy);
   }
-
-  simpleAlgo() {
-    this.manager.simpleAlgo();
-  }
+  
 }

@@ -69,16 +69,22 @@ export default class GridManager {
     return out;
   }
 
-  simpleAlgo() {
-    // 1) snapshot original black squares
-    const blackKeys = new Set<string>();
-    for (const [key, sq] of this.squares.entries()) {
-      if (sq.isBlack()) blackKeys.add(key);
-    }
+  // static helper to run the same algorithm directly on a Uint8Array grid
+  // grid: Uint8Array (length = cols * rows), values 0/1
+  static simpleAlgoOnGrid(grid: Uint8Array, cols: number, rows: number) {
+    if (!grid || grid.length !== cols * rows) return;
 
+    // snapshot original black cells
+    const blackKeys = new Set<string>();
+    for (let r = 0; r < rows; r++) {
+      const base = r * cols;
+      for (let c = 0; c < cols; c++) {
+        if (grid[base + c]) blackKeys.add(`${c},${r}`);
+      }
+    }
     if (blackKeys.size === 0) return;
 
-    // 2) count toggles for neighbours (excluding original black squares)
+    // count toggles for neighbours (excluding original black squares)
     const toggleCounts = new Map<string, number>();
     const neighbors = [
       [-1, -1],
@@ -95,29 +101,69 @@ export default class GridManager {
       const [gxStr, gyStr] = key.split(",");
       const gx = Number(gxStr);
       const gy = Number(gyStr);
-
       for (const [dx, dy] of neighbors) {
         const nx = gx + dx;
         const ny = gy + dy;
+        if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) continue;
         const nKey = `${nx},${ny}`;
-        // ignore neighbours outside map or neighbours that were black originally
-        if (!this.squares.has(nKey) || blackKeys.has(nKey)) continue;
+        if (blackKeys.has(nKey)) continue; // exclude original blacks
         toggleCounts.set(nKey, (toggleCounts.get(nKey) || 0) + 1);
       }
     }
 
-    // 3) set all original black squares to white (explicit rule)
+    // set all original black squares to white
     for (const key of blackKeys) {
-      const sq = this.squares.get(key);
-      if (sq) sq.setColor(0);
+      const [cStr, rStr] = key.split(",");
+      const idx = Number(rStr) * cols + Number(cStr);
+      grid[idx] = 0;
     }
 
-    // 4) apply toggles to neighbours according to parity (odd -> toggle)
+    // apply toggles to neighbours according to parity (odd -> toggle)
     for (const [nKey, count] of toggleCounts.entries()) {
       if ((count & 1) === 1) {
-        const sq = this.squares.get(nKey);
-        if (sq) sq.toggle();
+        const [cxStr, ryStr] = nKey.split(",");
+        const idx = Number(ryStr) * cols + Number(cxStr);
+        grid[idx] = grid[idx] ? 0 : 1;
       }
     }
+  }
+
+  // static helper to run one Conway "Game of Life" step on a Uint8Array grid
+  // grid: Uint8Array (length = cols * rows), values 0/1
+  static conwayStepOnGrid(grid: Uint8Array, cols: number, rows: number) {
+    if (!grid || grid.length !== cols * rows) return;
+
+    const next = new Uint8Array(cols * rows);
+
+    for (let r = 0; r < rows; r++) {
+      const rowBase = r * cols;
+      for (let c = 0; c < cols; c++) {
+        let neighbors = 0;
+        // count 8 neighbours
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = c + dx;
+            const ny = r + dy;
+            if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) continue;
+            if (grid[ny * cols + nx]) neighbors++;
+          }
+        }
+
+        const idx = rowBase + c;
+        const alive = grid[idx] ? 1 : 0;
+        // Conway rules:
+        // - alive with 2 or 3 neighbours stays alive
+        // - dead with exactly 3 neighbours becomes alive
+        if (alive) {
+          next[idx] = (neighbors === 2 || neighbors === 3) ? 1 : 0;
+        } else {
+          next[idx] = (neighbors === 3) ? 1 : 0;
+        }
+      }
+    }
+
+    // copy next state back into the provided buffer
+    grid.set(next);
   }
 }

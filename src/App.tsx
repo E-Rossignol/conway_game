@@ -4,11 +4,15 @@ import resetIcon from "./assets/icons/reset.png";
 import playOnceIcon from "./assets/icons/next.png";
 import pauseIcon from "./assets/icons/pause.png";
 import playFastIcon from "./assets/icons/fast-forward.png";
+import GridManager from "./grid/GridManager";
+import { applyPatternToGrid, patterns } from "./figures";
 
 const GRID_COLS = 1000;
 const GRID_ROWS = 1000;
 const DEFAULT_CELL_SIZE = 10; // valeur de référence (px pour 100%)
 const IS_TOAST_ENABLED = true; // activer/désactiver le toast d'info sur double-clic
+const DEFAULT_SLOW_SPEED_MS = 60; // intervalle par défaut pour autoplay lent
+const DEFAULT_FAST_SPEED_MS = 20; // intervalle par défaut pour autoplay rapide
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -34,6 +38,9 @@ export default function App() {
   // zoom en pourcentage (10..300), initial 100%
   const [zoomPercent, setZoomPercent] = useState<number>(100);
 
+  // persist the user's chosen zoom so timers/effects won't overwrite it
+  const lastUserZoomRef = useRef<number>(100);
+
   // initialise toute la grille en mémoire au démarrage
   useEffect(() => {
     if (!gridRef.current) {
@@ -42,7 +49,7 @@ export default function App() {
   }, []);
 
   // dessine la portion visible en fonction du scroll, lit dans gridRef
-  function draw() {
+  function draw(zoom = zoomPercent) {
     const container = containerRef.current;
     const canvas = canvasRef.current;
     const grid = gridRef.current;
@@ -54,7 +61,7 @@ export default function App() {
     const heightCss = container.clientHeight;
 
     // taille effective de cellule en px CSS selon le zoom
-    const cellSize = Math.max(1, Math.round((DEFAULT_CELL_SIZE * zoomPercent) / 100));
+    const cellSize = Math.max(1, Math.round((DEFAULT_CELL_SIZE * zoom) / 100));
 
     // HiDPI : backing store en device pixels
     const dpr = window.devicePixelRatio || 1;
@@ -140,20 +147,22 @@ export default function App() {
     const container = containerRef.current;
     if (!container) return;
 
-    // dessiner initialement
-    draw();
+    // dessiner initialement using the user's current zoom
+    draw(lastUserZoomRef.current);
 
     const onScroll = () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      const z = lastUserZoomRef.current;
       rafRef.current = requestAnimationFrame(() => {
-        draw();
+        draw(z);
         rafRef.current = null;
       });
     };
     const onResize = () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      const z = lastUserZoomRef.current;
       rafRef.current = requestAnimationFrame(() => {
-        draw();
+        draw(z);
         rafRef.current = null;
       });
     };
@@ -191,8 +200,9 @@ export default function App() {
     grid[idx] = grid[idx] ? 0 : 1;
     // redraw (raf)
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    const z = lastUserZoomRef.current;
     rafRef.current = requestAnimationFrame(() => {
-      draw();
+      draw(z);
       rafRef.current = null;
     });
   };
@@ -200,6 +210,7 @@ export default function App() {
   // slider handlers
   const onZoomChange = (val: number) => {
     setZoomPercent(val);
+    lastUserZoomRef.current = val;
     // updating spacer size implicitly; redraw triggered by useEffect dependency
   };
 
@@ -280,70 +291,19 @@ export default function App() {
   };
 
   // run the "simpleAlgo" directly on the Uint8Array gridRef
-  const runSimpleAlgo = () => {
+  const runConwayStep = () => {
     const grid = gridRef.current;
     if (!grid) return;
-
-    // 1) snapshot original black cells
-    const blackKeys = new Set<string>();
-    for (let r = 0; r < GRID_ROWS; r++) {
-      const base = r * GRID_COLS;
-      for (let c = 0; c < GRID_COLS; c++) {
-        if (grid[base + c]) blackKeys.add(`${c},${r}`);
-      }
-    }
-    if (blackKeys.size === 0) return;
-
-    // 2) count toggles for neighbours (excluding original black squares)
-    const toggleCounts = new Map<string, number>();
-    const neighbors = [
-      [-1, -1],
-      [-1, 0],
-      [-1, 1],
-      [0, -1],
-      [0, 1],
-      [1, -1],
-      [1, 0],
-      [1, 1],
-    ];
-
-    for (const key of blackKeys) {
-      const [gxStr, gyStr] = key.split(",");
-      const gx = Number(gxStr);
-      const gy = Number(gyStr);
-      for (const [dx, dy] of neighbors) {
-        const nx = gx + dx;
-        const ny = gy + dy;
-        if (nx < 0 || nx >= GRID_COLS || ny < 0 || ny >= GRID_ROWS) continue;
-        const nKey = `${nx},${ny}`;
-        if (blackKeys.has(nKey)) continue; // exclude original blacks
-        toggleCounts.set(nKey, (toggleCounts.get(nKey) || 0) + 1);
-      }
-    }
-
-    // 3) set all original black squares to white
-    for (const key of blackKeys) {
-      const [cStr, rStr] = key.split(",");
-      const idx = Number(rStr) * GRID_COLS + Number(cStr);
-      grid[idx] = 0;
-    }
-
-    // 4) apply toggles to neighbours according to parity (odd -> toggle)
-    for (const [nKey, count] of toggleCounts.entries()) {
-      if ((count & 1) === 1) {
-        const [cxStr, ryStr] = nKey.split(",");
-        const idx = Number(ryStr) * GRID_COLS + Number(cxStr);
-        grid[idx] = grid[idx] ? 0 : 1;
-      }
-    }
-
+    // delegate to GridManager's static implementation
+    GridManager.conwayStepOnGrid(grid, GRID_COLS, GRID_ROWS);
     // request redraw
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    const z = lastUserZoomRef.current;
     rafRef.current = requestAnimationFrame(() => {
-      draw();
+      draw(z);
       rafRef.current = null;
     });
-  };
+  }
 
   // start autoplay: accept a boolean to decide whether to run immediately,
   // then schedule periodic runs every 500ms
@@ -354,8 +314,8 @@ export default function App() {
     }
     // schedule periodic runs
     autoTimerRef.current = window.setInterval(() => {
-      runSimpleAlgo();
-    }, runFast ? 250 : 500);
+      runConwayStep();
+    }, runFast ? DEFAULT_FAST_SPEED_MS : DEFAULT_SLOW_SPEED_MS);
   };
 
   // stop autoplay
@@ -388,6 +348,20 @@ export default function App() {
       setActiveButton(null);
       flashTimerRef.current = null;
     }, duration);
+  };
+
+  // apply named pattern from figures.ts onto the current Uint8Array grid
+  const applyPattern = (name: keyof typeof patterns) => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    applyPatternToGrid(grid, GRID_COLS, GRID_ROWS, name);
+    // redraw using user's zoom
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    const z = lastUserZoomRef.current;
+    rafRef.current = requestAnimationFrame(() => {
+      draw(z);
+      rafRef.current = null;
+    });
   };
 
   return (
@@ -502,7 +476,7 @@ export default function App() {
 
         {/* compact reset button on the right of the zoom control */}
         <button
-          onClick={() => setZoomPercent(100)}
+          onClick={() => { setZoomPercent(100); lastUserZoomRef.current = 100; }}
           title="Reset zoom"
           aria-label="Reset zoom"
           style={{
@@ -525,6 +499,30 @@ export default function App() {
             <path d="M21 3v6h-6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
+       {/* apply "block" pattern (example) */}
+       <button
+         onClick={() => { triggerButtonEffect("pattern"); applyPattern("glider"); }}
+         title="Apply block pattern"
+         aria-label="Apply block pattern"
+         style={{
+           background: "rgba(255,255,255,0.06)",
+           border: "none",
+           color: "#fff",
+           padding: 4,
+           borderRadius: 6,
+           width: 28,
+           height: 28,
+           display: "flex",
+           alignItems: "center",
+           justifyContent: "center",
+           cursor: "pointer",
+           transform: activeButton === "pattern" ? "scale(1.12)" : "none",
+           transition: "transform 140ms ease",
+         }}
+       >
+         {/* tiny indicator (could be replaced by an icon) */}
+         <div style={{ width: 10, height: 10, background: "#fff", borderRadius: 2 }} />
+       </button>
       </div>
 
       {/* floating play triangle - no background, only the triangle */}
@@ -547,7 +545,7 @@ export default function App() {
         <img
           src={playOnceIcon}
           alt="Play Once"
-          onClick={() => { triggerButtonEffect("playOnce"); runSimpleAlgo(); }}
+          onClick={() => { triggerButtonEffect("playOnce"); runConwayStep(); }}
           role="button"
           aria-label="Run single step"
           style={{
