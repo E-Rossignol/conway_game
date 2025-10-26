@@ -11,7 +11,6 @@ export default class Controller {
     this.manager.setViewport(cols, rows);
   }
 
-
   resetAll() {
     this.manager.resetAll();
   }

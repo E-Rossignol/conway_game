@@ -1,4 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
+import playIcon from "./assets/icons/play.png";
+import resetIcon from "./assets/icons/reset.png";
+import playOnceIcon from "./assets/icons/next.png";
+import pauseIcon from "./assets/icons/pause.png";
+import playFastIcon from "./assets/icons/fast-forward.png";
 
 const GRID_COLS = 1000;
 const GRID_ROWS = 1000;
@@ -10,6 +15,21 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const gridRef = useRef<Uint8Array | null>(null); // 0 = white, 1 = black
+  const autoTimerRef = useRef<number | null>(null); // interval id for autoplay
+  const flashTimerRef = useRef<number | null>(null); // timeout id for per-button effect
+  const [activeButton, setActiveButton] = useState<string | null>(null);
+  const controllerRef = useRef<{ reset: () => void }>({
+    reset: () => {
+      const grid = gridRef.current;
+      if (!grid) return;
+      grid.fill(0);
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        draw();
+        rafRef.current = null;
+      });
+    },
+  });
 
   // zoom en pourcentage (10..300), initial 100%
   const [zoomPercent, setZoomPercent] = useState<number>(100);
@@ -150,6 +170,8 @@ export default function App() {
 
   // toggle d'une cellule (click) : met à jour toute la grille en mémoire puis redraw
   const onContainerClick = (e: React.MouseEvent) => {
+    // when autoplay is running, disable manual cell toggling
+    if (autoTimerRef.current != null) return;
     const container = containerRef.current;
     const grid = gridRef.current;
     if (!container || !grid) return;
@@ -214,6 +236,10 @@ export default function App() {
         clearTimeout(infoTimerRef.current);
         infoTimerRef.current = null;
       }
+      if (flashTimerRef.current != null) {
+        clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -251,6 +277,117 @@ export default function App() {
       setInfoToast(null);
       infoTimerRef.current = null;
     }, 2000);
+  };
+
+  // run the "simpleAlgo" directly on the Uint8Array gridRef
+  const runSimpleAlgo = () => {
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    // 1) snapshot original black cells
+    const blackKeys = new Set<string>();
+    for (let r = 0; r < GRID_ROWS; r++) {
+      const base = r * GRID_COLS;
+      for (let c = 0; c < GRID_COLS; c++) {
+        if (grid[base + c]) blackKeys.add(`${c},${r}`);
+      }
+    }
+    if (blackKeys.size === 0) return;
+
+    // 2) count toggles for neighbours (excluding original black squares)
+    const toggleCounts = new Map<string, number>();
+    const neighbors = [
+      [-1, -1],
+      [-1, 0],
+      [-1, 1],
+      [0, -1],
+      [0, 1],
+      [1, -1],
+      [1, 0],
+      [1, 1],
+    ];
+
+    for (const key of blackKeys) {
+      const [gxStr, gyStr] = key.split(",");
+      const gx = Number(gxStr);
+      const gy = Number(gyStr);
+      for (const [dx, dy] of neighbors) {
+        const nx = gx + dx;
+        const ny = gy + dy;
+        if (nx < 0 || nx >= GRID_COLS || ny < 0 || ny >= GRID_ROWS) continue;
+        const nKey = `${nx},${ny}`;
+        if (blackKeys.has(nKey)) continue; // exclude original blacks
+        toggleCounts.set(nKey, (toggleCounts.get(nKey) || 0) + 1);
+      }
+    }
+
+    // 3) set all original black squares to white
+    for (const key of blackKeys) {
+      const [cStr, rStr] = key.split(",");
+      const idx = Number(rStr) * GRID_COLS + Number(cStr);
+      grid[idx] = 0;
+    }
+
+    // 4) apply toggles to neighbours according to parity (odd -> toggle)
+    for (const [nKey, count] of toggleCounts.entries()) {
+      if ((count & 1) === 1) {
+        const [cxStr, ryStr] = nKey.split(",");
+        const idx = Number(ryStr) * GRID_COLS + Number(cxStr);
+        grid[idx] = grid[idx] ? 0 : 1;
+      }
+    }
+
+    // request redraw
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      draw();
+      rafRef.current = null;
+    });
+  };
+
+  // start autoplay: accept a boolean to decide whether to run immediately,
+  // then schedule periodic runs every 500ms
+  const startAutoPlay = (runFast: boolean = false) => {
+    if (autoTimerRef.current != null) 
+    {
+      stopAutoPlay();
+    }
+    // schedule periodic runs
+    autoTimerRef.current = window.setInterval(() => {
+      runSimpleAlgo();
+    }, runFast ? 250 : 500);
+  };
+
+  // stop autoplay
+  const stopAutoPlay = () => {
+    if (autoTimerRef.current != null) {
+      clearInterval(autoTimerRef.current);
+      autoTimerRef.current = null;
+    }
+  };
+
+  // cleanup autoplay on unmount
+  useEffect(() => {
+    return () => {
+      if (autoTimerRef.current != null) {
+        clearInterval(autoTimerRef.current);
+        autoTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // trigger a quick per-button visual effect then revert
+  const triggerButtonEffect = (id: string, duration = 100) => {
+    // clear any running effect
+    if (flashTimerRef.current != null) {
+      clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = null;
+    }
+    setActiveButton(id);
+    flashTimerRef.current = window.setTimeout(() => {
+      setActiveButton(null);
+      flashTimerRef.current = null;
+    }, duration);
   };
 
   return (
@@ -349,7 +486,7 @@ export default function App() {
         }}
       >
         {/* left: percent + slider (vertical) */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
           <div style={{ color: "#fff", fontSize: 11 }}>{zoomPercent}%</div>
           <input
             type="range"
@@ -358,7 +495,7 @@ export default function App() {
             step={10} // move by 10% steps
             value={zoomPercent}
             onChange={(e) => onZoomChange(Number(e.target.value))}
-            style={{ width: 120 }} // smaller slider
+            style={{ width: 120}} // smaller slider
             aria-label="Zoom"
           />
         </div>
@@ -387,6 +524,108 @@ export default function App() {
             <path d="M21 12a9 9 0 10-3.2 6.6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M21 3v6h-6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
+        </button>
+      </div>
+
+      {/* floating play triangle - no background, only the triangle */}
+      <div
+        style={{
+          position: "absolute",
+          right: 20,
+          top: 20,
+          zIndex: 90,
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          padding: 6,
+          borderRadius: 6,
+          background: "rgba(0,0,0,0.12)", // semi-transparent wrapper
+          pointerEvents: "auto",
+        }}
+        aria-hidden={false}
+      >
+        <img
+          src={playOnceIcon}
+          alt="Play Once"
+          onClick={() => { triggerButtonEffect("playOnce"); runSimpleAlgo(); }}
+          role="button"
+          aria-label="Run single step"
+          style={{
+            width: 20,
+            height: 20,
+            cursor: "pointer",
+            display: "block",
+            transform: activeButton === "playOnce" ? "scale(1.2)" : "none",
+            transition: "transform 140ms ease",
+          }}
+        />
+        <img
+          src={playIcon}
+          alt="Play"
+          onClick={() => { triggerButtonEffect("play"); startAutoPlay(); }}
+          role="button"
+          aria-label="Start autoplay"
+          style={{
+            width: 20,
+            height: 20,
+            cursor: "pointer",
+            display: "block",
+            transform: activeButton === "play" ? "scale(1.2)" : "none",
+            transition: "transform 140ms ease",
+          }}
+        />
+        <img
+          src={playFastIcon}
+          alt="Play Fast"
+          onClick={() => { triggerButtonEffect("playFast"); startAutoPlay(true); }}
+          role="button"
+          aria-label="Start autoplay fast"
+          style={{
+            width: 20,
+            height: 20,
+            cursor: "pointer",
+            display: "block",
+            transform: activeButton === "playFast" ? "scale(1.2)" : "none",
+            transition: "transform 140ms ease",
+          }}
+        />
+        <img
+          src={pauseIcon}
+          alt="Pause"
+          onClick={() => { triggerButtonEffect("pause"); stopAutoPlay(); }}
+          role="button"
+          aria-label="Stop autoplay"
+          style={{
+            width: 20,
+            height: 20,
+            cursor: "pointer",
+            display: "block",
+            transform: activeButton === "pause" ? "scale(1.2)" : "none",
+            transition: "transform 140ms ease",
+          }}
+        />
+
+        {/* reset image inside a button to keep click area consistent */}
+        <button
+          onClick={() => { triggerButtonEffect("reset"); controllerRef.current.reset(); }}
+          title="Reset grid"
+          aria-label="Reset grid"
+          style={{
+            width: 28,
+            height: 28,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 6,
+            border: "none",
+            background: "rgba(255,255,255,0.06)",
+            cursor: "pointer",
+            padding: 4,
+            transform: activeButton === "reset" ? "scale(1.12)" : "none",
+            transition: "transform 140ms ease",
+          }}
+        >
+          <img src={resetIcon} alt="Reset" style={{ width: 20, height: 20, display: "block" }} />
         </button>
       </div>
     </div>
