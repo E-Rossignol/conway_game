@@ -2,22 +2,40 @@ import Square from "../models/Square";
 
 export default class GridManager {
   cellCount: number;
-  visible: number;
+  cols: number;
+  rows: number;
   gridMin: number;
   squares: Map<string, Square>;
 
-  constructor(cellCount = 100, visible = 100) {
+  constructor(cellCount = 100, cols = 100, rows = 100) {
+    // déléguer l'initialisation à resize pour pouvoir réutiliser plus tard
+    this.cellCount = 0;
+    this.cols = 0;
+    this.rows = 0;
+    this.gridMin = 0;
+    this.squares = new Map();
+    this.resize(cellCount, cols, rows);
+  }
+
+  // redimensionne / réinitialise la grille (cols x rows)
+  resize(cellCount = this.cellCount, cols = this.cols, rows = this.rows) {
     this.cellCount = cellCount;
-    this.visible = visible;
-    this.gridMin = -Math.floor(cellCount / 2);
+    this.cols = cols;
+    this.rows = rows;
+    this.gridMin = -Math.floor(this.cellCount / 2);
     this.squares = new Map();
     this._init();
   }
 
+  // alias explicite pour l'UI/controller
+  setViewport(cols: number, rows: number) {
+    this.resize(this.cellCount, cols, rows);
+  }
+
   private _init() {
     this.squares.clear();
-    for (let row = 0; row < this.visible; row++) {
-      for (let col = 0; col < this.visible; col++) {
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
         const gx = this.gridMin + col;
         const gy = this.gridMin + row;
         const s = new Square(gx, gy, 0);
@@ -39,28 +57,6 @@ export default class GridManager {
     for (const sq of this.squares.values()) fn(sq);
   }
 
-  setEvenEven() {
-    for (const sq of this.squares.values()) {
-      const gx = sq.x;
-      const gy = sq.y;
-      if (Math.abs(gx) % 2 === 0 && Math.abs(gy) % 2 === 0) sq.setColor(1);
-      else sq.setColor(0);
-    }
-  }
-
-  setOddOdd() {
-    for (const sq of this.squares.values()) {
-      const gx = sq.x;
-      const gy = sq.y;
-      if (Math.abs(gx) % 2 === 1 && Math.abs(gy) % 2 === 1) sq.setColor(1);
-      else sq.setColor(0);
-    }
-  }
-
-  invertAll() {
-    for (const sq of this.squares.values()) sq.toggle();
-  }
-
   resetAll() {
     for (const sq of this.squares.values()) sq.setColor(0);
   }
@@ -73,26 +69,7 @@ export default class GridManager {
     return out;
   }
 
-  // Nouvelle méthode : pour chaque (x,y), la nouvelle couleur = couleur du square à x+1 (wrap sur la ligne)
   simpleAlgo() {
-    // Préparer un container pour stocker les nouvelles couleurs (key -> color)
-    const newColors = new Map<string, 0 | 1>();
-    for (const sq of this.squares.values()) {
-        const gx = sq.x;
-        const gy = sq.y;
-        const nextGx = gx + 1 > this.gridMin + this.visible - 1 ? this.gridMin : gx + 1;
-        const nextGy = gy + 1 > this.gridMin + this.visible - 1 ? this.gridMin : gy + 1;
-        const nextSq = this.getSquare(nextGx, nextGy);
-        if (nextSq) {
-            newColors.set(sq.key(), nextSq.color);
-        }
-    }
-    // Appliquer les nouvelles couleurs
-    for (const [key, color] of newColors.entries()) {
-        const sq = this.squares.get(key);
-        if (sq) {
-            sq.setColor(color);
-        }
-    }
+    
   }
 }

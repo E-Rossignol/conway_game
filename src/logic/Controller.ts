@@ -7,17 +7,10 @@ export default class Controller {
     this.manager = manager;
   }
 
-  setEvenEven() {
-    this.manager.setEvenEven();
+  setViewport(cols: number, rows: number) {
+    this.manager.setViewport(cols, rows);
   }
 
-  setOddOdd() {
-    this.manager.setOddOdd();
-  }
-
-  invertAll() {
-    this.manager.invertAll();
-  }
 
   resetAll() {
     this.manager.resetAll();
@@ -26,8 +19,8 @@ export default class Controller {
   toggleAt(gx: number, gy: number) {
     this.manager.toggleAt(gx, gy);
   }
-    
+
   simpleAlgo() {
     this.manager.simpleAlgo();
-    }
+  }
 }
