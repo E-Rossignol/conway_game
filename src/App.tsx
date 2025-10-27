@@ -501,7 +501,7 @@ export default function App() {
         </button>
        {/* apply "block" pattern (example) */}
        <button
-         onClick={() => { triggerButtonEffect("pattern"); applyPattern("glider"); }}
+         onClick={() => { triggerButtonEffect("pattern"); applyPattern("gosperglidergun"); }}
          title="Apply block pattern"
          aria-label="Apply block pattern"
          style={{
