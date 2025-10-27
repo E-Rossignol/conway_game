@@ -378,21 +378,6 @@ export default function App() {
     }, duration);
   };
 
-  // apply named pattern from figures.ts onto the current Uint8Array grid
-  const applyPattern = (name: keyof typeof patterns) => {
-    const grid = gridRef.current;
-    if (!grid) return;
-    // default placement: top-left corner (0,0) and clear grid
-    applyPatternToGrid(grid, GRID_COLS, GRID_ROWS, name, 0, 0, true);
-     // redraw using user's zoom
-     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-     const z = lastUserZoomRef.current;
-     rafRef.current = requestAnimationFrame(() => {
-       draw(z);
-       rafRef.current = null;
-     });
-   };
-
   // top-left expandable triple-line menu
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const toggleMenu = () => setMenuOpen((v) => !v);
@@ -415,6 +400,17 @@ export default function App() {
         draw(z);
         rafRef.current = null;
       });
+      // update ghost DOM position (client coords)
+      // compute offset so the cursor sits at center of pattern's (0,0) cell
+      const bounds = getPatternBounds(draggingPatternRef.current!);
+      const cellSizeCss = Math.max(1, Math.round((DEFAULT_CELL_SIZE * lastUserZoomRef.current) / 100));
+      if (bounds) {
+        const offsetX = bounds.relX * cellSizeCss + cellSizeCss / 2;
+        const offsetY = bounds.relY * cellSizeCss + cellSizeCss / 2;
+        setGhostPos({ x: ev.clientX - offsetX, y: ev.clientY - offsetY });
+      } else {
+        setGhostPos({ x: ev.clientX, y: ev.clientY });
+      }
     };
 
     windowHandlersRef.current.up = (ev: MouseEvent) => {
@@ -426,6 +422,7 @@ export default function App() {
         setDraggingPattern(null);
         draggingPatternRef.current = null;
         dragPosRef.current = null;
+        setGhostPos(null);
         return;
       }
       const rect = container.getBoundingClientRect();
@@ -442,11 +439,14 @@ export default function App() {
       setDraggingPattern(null);
       draggingPatternRef.current = null;
       dragPosRef.current = null;
+      setGhostPos(null);
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
         draw(z);
         rafRef.current = null;
       });
+      // restore cursor
+      document.body.style.cursor = "";
     };
 
     return () => {
@@ -458,6 +458,75 @@ export default function App() {
   // Drag & drop pattern state
   const [draggingPattern, setDraggingPattern] = useState<keyof typeof patterns | null>(null);
   const dragPosRef = useRef<{ cx: number; cy: number } | null>(null); // mouse pos relative to container (CSS px)
+  // small helper to render a pattern preview icon using figures.ts data
+  // If cellPixel is provided, each pattern cell is rendered at that CSS pixel size.
+  const renderPatternIcon = (name: keyof typeof patterns, iconSize = 20, color = "#000", cellPixel?: number) => {
+     const pat = patterns[name];
+     if (!pat || pat.blackCells.length === 0) {
+       return <div style={{ width: iconSize, height: iconSize }} />;
+     }
+     // compute bounding box of the pattern
+     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+     for (const cell of pat.blackCells) {
+       if (cell.x < minX) minX = cell.x;
+       if (cell.y < minY) minY = cell.y;
+       if (cell.x > maxX) maxX = cell.x;
+       if (cell.y > maxY) maxY = cell.y;
+     }
+     const w = maxX - minX + 1;
+     const h = maxY - minY + 1;
+     const cellPx = cellPixel ?? Math.max(4, Math.floor(iconSize / Math.max(w, h)));
+     const gridStyle: React.CSSProperties = {
+       width: cellPx * w,
+       height: cellPx * h,
+       display: "grid",
+       gridTemplateColumns: `repeat(${w}, ${cellPx}px)`,
+       gridTemplateRows: `repeat(${h}, ${cellPx}px)`,
+       gap: 1,
+     };
+     // build set of relative coords
+     const set = new Set<string>();
+     for (const cell of pat.blackCells) set.add(`${cell.x - minX},${cell.y - minY}`);
+     const cells: JSX.Element[] = [];
+     for (let yy = 0; yy < h; yy++) {
+       for (let xx = 0; xx < w; xx++) {
+         const key = `${xx},${yy}`;
+         cells.push(
+           <div
+             key={key}
+             style={{
+               width: cellPx,
+               height: cellPx,
+               background: set.has(key) ? color : "transparent",
+             }}
+           />
+         );
+       }
+     }
+     return <div style={gridStyle}>{cells}</div>;
+   };
+ 
+   // ghost position state for DOM-following preview
+   const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(null);
+
+  // helper that returns bounding box and the relative coords of the pattern's (0,0) reference
+  const getPatternBounds = (name: keyof typeof patterns) => {
+    const pat = patterns[name];
+    if (!pat || pat.blackCells.length === 0) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const cell of pat.blackCells) {
+      if (cell.x < minX) minX = cell.x;
+      if (cell.y < minY) minY = cell.y;
+      if (cell.x > maxX) maxX = cell.x;
+      if (cell.y > maxY) maxY = cell.y;
+    }
+    const w = maxX - minX + 1;
+    const h = maxY - minY + 1;
+    // relative index of the (0,0) reference inside that bounding box
+    const relX = 0 - minX;
+    const relY = 0 - minY;
+    return { minX, minY, w, h, relX, relY };
+  };
 
   // start dragging a pattern (call from menu item's onMouseDown)
   const startPatternDrag = (name: keyof typeof patterns, e: React.MouseEvent) => {
@@ -475,6 +544,25 @@ export default function App() {
     // attach global listeners to track movement and drop (use stable refs)
     if (windowHandlersRef.current.move) window.addEventListener("mousemove", windowHandlersRef.current.move);
     if (windowHandlersRef.current.up) window.addEventListener("mouseup", windowHandlersRef.current.up);
+    // make the drag visible immediately and show grabbing cursor
+    document.body.style.cursor = "grabbing";
+    const z = lastUserZoomRef.current;
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      draw(z);
+      rafRef.current = null;
+    });
+    // set initial ghost pos (use client coords so DOM ghost follows pointer)
+    // position ghost so cursor is at center of the pattern's (0,0) cell
+    const bounds = getPatternBounds(name);
+    const cellSizeCss = Math.max(1, Math.round((DEFAULT_CELL_SIZE * lastUserZoomRef.current) / 100));
+    if (bounds) {
+      const offsetX = bounds.relX * cellSizeCss + cellSizeCss / 2;
+      const offsetY = bounds.relY * cellSizeCss + cellSizeCss / 2;
+      setGhostPos({ x: e.clientX - offsetX , y: e.clientY - offsetY});
+    } else {
+      setGhostPos({ x: e.clientX, y: e.clientY });
+    }
   };
 
   const stopPatternDrag = () => {
@@ -490,6 +578,9 @@ export default function App() {
       draw(z);
       rafRef.current = null;
     });
+    // clear ghost and restore cursor
+    setGhostPos(null);
+    document.body.style.cursor = "";
   };
 
   return (
@@ -509,6 +600,33 @@ export default function App() {
         msUserSelect: "none",
       }}
     >
+      {/* DOM ghost that follows the cursor while dragging — anchored at top-left (cursor = reference) */}
+      {draggingPattern && ghostPos && (() => {
+        // compute CSS pixels per grid cell according to current zoom
+        const z = lastUserZoomRef.current;
+        const cellSizeCss = Math.max(1, Math.round((DEFAULT_CELL_SIZE * z) / 100));
+        return (
+          <div
+            style={{
+              position: "fixed",
+              left: ghostPos.x,
+              top: ghostPos.y,
+              transform: "translate(0,0)", // anchor top-left to pointer (reference)
+              pointerEvents: "none",
+              zIndex: 300,
+              opacity: 0.98,
+              background: "transparent",
+              padding: 4,
+              borderRadius: 6,
+              filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.35))",
+            }}
+          >
+            {/* render with per-cell size matching current zoom; use white for contrast */}
+            {renderPatternIcon(draggingPattern, 48, "#ffffff", cellSizeCss)}
+          </div>
+        );
+      })()}
+
       {/* top-left triple-line button + expandable panel */}
       <div
         style={{
@@ -574,13 +692,28 @@ export default function App() {
               padding: 6,
             }}
           >
-            {/* minimal block-only preview (no text) */}
-            <div style={{ width: 20, height: 20, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 1 }}>
-              <div style={{ background: "#000" }} />
-              <div style={{ background: "#000" }} />
-              <div style={{ background: "#000" }} />
-              <div style={{ background: "#000" }} />
-            </div>
+            {renderPatternIcon("block", 20, "#000")}
+          </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            onMouseDown={(e) => { triggerButtonEffect("pattern"); startPatternDrag("glider", e); }}
+            style={{
+              width: 40,
+              height: 40,
+              background: "rgba(255,255,255,0.9)",
+              color: "#000",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 6,
+              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+              cursor: "grab",
+              padding: 6,
+            }}
+          >
+            {renderPatternIcon("glider", 20, "#000")}
           </div>
 
           <div
