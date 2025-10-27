@@ -1,29 +1,30 @@
 export type Cell = { x: number; y: number };
 
 export const patterns = {
-	// "block" : all white except the four cells at (100,100),(100,101),(101,100),(101,101)
+	// "block" : relative coords (top-left corner is reference)
 	block: {
 		blackCells: [
-			{ x: 6, y: 5 },
-			{ x: 6, y: 6 },
-			{ x: 7, y: 5 },
-			{ x: 7, y: 6 },
-
+			{ x: 0, y: 0 },
+			{ x: 0, y: 1 },
+			{ x: 1, y: 0 },
+			{ x: 1, y: 1 },
 		] as Cell[],
 	},
     glider: {
         blackCells: [
-            { x: 6, y: 5 },
-            { x: 7, y: 5 },
-            { x: 8, y: 5 },
-            { x: 8, y: 4 },
-            { x: 7, y: 3 },
+            { x: 0, y: 0 },
+            { x: 1, y: 0 },
+            { x: 2, y: 0 },
+            { x: 2, y: -1 },
+            { x: 1, y: -2 },
         ] as Cell[],
     },
 	gosperglidergun: {
         blackCells: [
-			// first block
-            { x: 10, y: 8 },
+			// NOTE: these were previously absolute; if you want them relative you should
+			// normalize them to a top-left reference. For now keep them as a larger template
+			// relative to a chosen origin (example values retained from previous).
+			{ x: 10, y: 8 },
 			{ x: 11, y: 8 },
 			{ x: 10, y: 9 },
 			{ x: 11, y: 9 },
@@ -69,15 +70,26 @@ export const patterns = {
 
 // Convenience: apply a pattern to a Uint8Array grid (mutates grid).
 // grid must have length === cols * rows. Values: 0 = white, 1 = black.
-export function applyPatternToGrid(grid: Uint8Array, cols: number, rows: number, patternName: keyof typeof patterns) {
+// offsetX/offsetY are the target position (top-left reference on the grid).
+// If clearGrid=true the function will clear the grid first, otherwise it overlays.
+export function applyPatternToGrid(
+	grid: Uint8Array,
+	cols: number,
+	rows: number,
+	patternName: keyof typeof patterns,
+	offsetX = 0,
+	offsetY = 0,
+	clearGrid = true
+) {
 	if (!grid || grid.length !== cols * rows) return;
 	const pat = patterns[patternName];
 	if (!pat) return;
-	// clear grid
-	grid.fill(0);
+	if (clearGrid) grid.fill(0);
 	for (const cell of pat.blackCells) {
 		const { x, y } = cell;
-		if (x < 0 || x >= cols || y < 0 || y >= rows) continue;
-		grid[y * cols + x] = 1;
+		const gx = offsetX + x;
+		const gy = offsetY + y;
+		if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
+		grid[gy * cols + gx] = 1;
 	}
 }

@@ -4,6 +4,7 @@ import resetIcon from "./assets/icons/reset.png";
 import playOnceIcon from "./assets/icons/next.png";
 import pauseIcon from "./assets/icons/pause.png";
 import playFastIcon from "./assets/icons/fast-forward.png";
+import menuIcon from "./assets/icons/menu.png";
 import GridManager from "./grid/GridManager";
 import { applyPatternToGrid, patterns } from "./figures";
 
@@ -76,8 +77,8 @@ export default function App() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
 
-    // fond blanc - en device pixels
-    ctx.fillStyle = "#ffffff";
+    // fond noir - en device pixels
+    ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, widthDev, heightDev);
 
     // positions de la fenêtre logique (CSS pixels)
@@ -110,14 +111,14 @@ export default function App() {
           const yCss = offsetYCss + r * cellSize;
           const xDev = Math.round(xCss * dpr);
           const yDev = Math.round(yCss * dpr);
-          ctx.fillStyle = "#000000";
+          ctx.fillStyle = "#ffffff";
           ctx.fillRect(xDev, yDev, cellDev, cellDev);
         }
       }
     }
 
     // dessiner les bordures (bleu foncé) en device pixels — lignes nettes avec 0.5 offset
-    ctx.strokeStyle = "#0b3d91";
+    ctx.strokeStyle = "#7070706e";
     ctx.lineWidth = 1;
 
     // verticales : i from 0..visibleCols
@@ -140,6 +141,32 @@ export default function App() {
       ctx.moveTo(Math.round(offsetXCss * dpr) + 0.5, yPos);
       ctx.lineTo(Math.round((offsetXCss + visibleCols * cellSize) * dpr) + 0.5, yPos);
       ctx.stroke();
+    }
+
+    // preview dragged pattern (semi-transparent) if any
+    if (draggingPattern && dragPosRef.current) {
+      const pat = patterns[draggingPattern];
+      if (pat && pat.blackCells.length > 0) {
+        // determine which grid cell is under the cursor
+        const cx = dragPosRef.current.cx;
+        const cy = dragPosRef.current.cy;
+        const colUnder = Math.floor((container.scrollLeft + cx) / cellSize);
+        const rowUnder = Math.floor((container.scrollTop + cy) / cellSize);
+        ctx.fillStyle = "rgba(0,200,80,0.55)";
+        for (const cell of pat.blackCells) {
+          const gx = colUnder + cell.x;
+          const gy = rowUnder + cell.y;
+          // only draw if visible
+          const visC = gx - firstCol;
+          const visR = gy - firstRow;
+          if (visC < 0 || visR < 0 || visC >= visibleCols || visR >= visibleRows) continue;
+          const xCss = offsetXCss + visC * cellSize;
+          const yCss = offsetYCss + visR * cellSize;
+          const xDev = Math.round(xCss * dpr);
+          const yDev = Math.round(yCss * dpr);
+          ctx.fillRect(xDev, yDev, Math.max(1, Math.round(cellSize * dpr)), Math.max(1, Math.round(cellSize * dpr)));
+        }
+      }
     }
   }
 
@@ -179,8 +206,9 @@ export default function App() {
 
   // toggle d'une cellule (click) : met à jour toute la grille en mémoire puis redraw
   const onContainerClick = (e: React.MouseEvent) => {
-    // when autoplay is running, disable manual cell toggling
+    // when autoplay is running or user is dragging a pattern, disable manual cell toggling
     if (autoTimerRef.current != null) return;
+    if (draggingPattern) return;
     const container = containerRef.current;
     const grid = gridRef.current;
     if (!container || !grid) return;
@@ -354,10 +382,110 @@ export default function App() {
   const applyPattern = (name: keyof typeof patterns) => {
     const grid = gridRef.current;
     if (!grid) return;
-    applyPatternToGrid(grid, GRID_COLS, GRID_ROWS, name);
-    // redraw using user's zoom
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    // default placement: top-left corner (0,0) and clear grid
+    applyPatternToGrid(grid, GRID_COLS, GRID_ROWS, name, 0, 0, true);
+     // redraw using user's zoom
+     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+     const z = lastUserZoomRef.current;
+     rafRef.current = requestAnimationFrame(() => {
+       draw(z);
+       rafRef.current = null;
+     });
+   };
+
+  // top-left expandable triple-line menu
+  const [menuOpen, setMenuOpen] = useState<boolean>(false);
+  const toggleMenu = () => setMenuOpen((v) => !v);
+
+  // stable refs for dragging handlers to ensure removeEventListener works
+  const draggingPatternRef = useRef<keyof typeof patterns | null>(null);
+  const windowHandlersRef = useRef<{ move?: (ev: MouseEvent) => void; up?: (ev: MouseEvent) => void }>({});
+
+  // define stable handlers once
+  useEffect(() => {
+    windowHandlersRef.current.move = (ev: MouseEvent) => {
+      if (!draggingPatternRef.current) return;
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      dragPosRef.current = { cx: ev.clientX - rect.left, cy: ev.clientY - rect.top };
+      const z = lastUserZoomRef.current;
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        draw(z);
+        rafRef.current = null;
+      });
+    };
+
+    windowHandlersRef.current.up = (ev: MouseEvent) => {
+      if (!draggingPatternRef.current) return;
+      const container = containerRef.current;
+      const grid = gridRef.current;
+      if (!container || !grid) {
+        // fallback cleanup
+        setDraggingPattern(null);
+        draggingPatternRef.current = null;
+        dragPosRef.current = null;
+        return;
+      }
+      const rect = container.getBoundingClientRect();
+      const cx = ev.clientX - rect.left;
+      const cy = ev.clientY - rect.top;
+      const z = lastUserZoomRef.current;
+      const cellSize = Math.max(1, Math.round((DEFAULT_CELL_SIZE * z) / 100));
+      const absoluteX = container.scrollLeft + cx;
+      const absoluteY = container.scrollTop + cy;
+      const col = Math.floor(absoluteX / cellSize);
+      const row = Math.floor(absoluteY / cellSize);
+      applyPatternToGrid(grid, GRID_COLS, GRID_ROWS, draggingPatternRef.current!, col, row, false);
+      // cleanup
+      setDraggingPattern(null);
+      draggingPatternRef.current = null;
+      dragPosRef.current = null;
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        draw(z);
+        rafRef.current = null;
+      });
+    };
+
+    return () => {
+      // nothing to remove here: listeners are added/removed by start/stop functions
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Drag & drop pattern state
+  const [draggingPattern, setDraggingPattern] = useState<keyof typeof patterns | null>(null);
+  const dragPosRef = useRef<{ cx: number; cy: number } | null>(null); // mouse pos relative to container (CSS px)
+
+  // start dragging a pattern (call from menu item's onMouseDown)
+  const startPatternDrag = (name: keyof typeof patterns, e: React.MouseEvent) => {
+    e.preventDefault();
+    setDraggingPattern(name);
+    draggingPatternRef.current = name;
+    // initialize drag position using current mouse location
+    const container = containerRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      dragPosRef.current = { cx: e.clientX - rect.left, cy: e.clientY - rect.top };
+    } else {
+      dragPosRef.current = { cx: 0, cy: 0 };
+    }
+    // attach global listeners to track movement and drop (use stable refs)
+    if (windowHandlersRef.current.move) window.addEventListener("mousemove", windowHandlersRef.current.move);
+    if (windowHandlersRef.current.up) window.addEventListener("mouseup", windowHandlersRef.current.up);
+  };
+
+  const stopPatternDrag = () => {
+    setDraggingPattern(null);
+    dragPosRef.current = null;
+    // remove the same stable listeners
+    if (windowHandlersRef.current.move) window.removeEventListener("mousemove", windowHandlersRef.current.move);
+    if (windowHandlersRef.current.up) window.removeEventListener("mouseup", windowHandlersRef.current.up);
+    // redraw final state
     const z = lastUserZoomRef.current;
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
       draw(z);
       rafRef.current = null;
@@ -381,6 +509,142 @@ export default function App() {
         msUserSelect: "none",
       }}
     >
+      {/* top-left triple-line button + expandable panel */}
+      <div
+        style={{
+          position: "absolute",
+          left: 16,
+          top: 16,
+          zIndex: 200,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 8,
+          pointerEvents: "auto",
+        }}
+      >
+        <button
+          onClick={toggleMenu}
+          aria-expanded={menuOpen}
+          title={menuOpen ? "Close menu" : "Open menu"}
+          style={{
+            width: 42,
+            height: 34,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 6,
+            borderRadius: 6,
+            border: "none",
+            background: "rgba(255, 255, 255, 0.9)",
+            cursor: "pointer",
+          }}
+        >
+          <img src={menuIcon} alt="Menu" style={{ width: 30, height: 30, display: "block" }} />
+        </button>
+
+        {/* expanded panel: four rectangles */}
+        <div
+          aria-hidden={!menuOpen}
+          style={{
+            display: menuOpen ? "flex" : "none",
+            flexDirection: "column",
+            gap: 8,
+            marginTop: 4,
+            transition: "opacity 160ms ease, transform 160ms ease",
+            opacity: menuOpen ? 1 : 0,
+            transform: menuOpen ? "translateY(0)" : "translateY(-6px)",
+          }}
+        >
+          <div
+            role="button"
+            tabIndex={0}
+            onMouseDown={(e) => { triggerButtonEffect("pattern"); startPatternDrag("block", e); }}
+            style={{
+              width: 40,
+              height: 40,
+              background: "rgba(255,255,255,0.9)",
+              color: "#000",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 6,
+              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+              cursor: "grab",
+              padding: 6,
+            }}
+          >
+            {/* minimal block-only preview (no text) */}
+            <div style={{ width: 20, height: 20, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 1 }}>
+              <div style={{ background: "#000" }} />
+              <div style={{ background: "#000" }} />
+              <div style={{ background: "#000" }} />
+              <div style={{ background: "#000" }} />
+            </div>
+          </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => { triggerButtonEffect("step"); runConwayStep(); }}
+            style={{
+              width: 120,
+              height: 34,
+              background: "rgba(255,255,255,0.9)",
+              color: "#000",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 6,
+              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+              cursor: "pointer",
+            }}
+          >
+            Step
+          </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => { triggerButtonEffect("play"); startAutoPlay(); }}
+            style={{
+              width: 120,
+              height: 34,
+              background: "rgba(255,255,255,0.9)",
+              color: "#000",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 6,
+              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+              cursor: "pointer",
+            }}
+          >
+            Play
+          </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => { triggerButtonEffect("stop"); stopAutoPlay(); }}
+            style={{
+              width: 120,
+              height: 34,
+              background: "rgba(255,255,255,0.9)",
+              color: "#000",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 6,
+              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+              cursor: "pointer",
+            }}
+          >
+            Stop
+          </div>
+        </div>
+      </div>
+
       {/* conteneur scrollable qui montre une surface logique (taille du spacer dépend du zoom) */}
       <div
         ref={containerRef}
@@ -499,30 +763,6 @@ export default function App() {
             <path d="M21 3v6h-6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
-       {/* apply "block" pattern (example) */}
-       <button
-         onClick={() => { triggerButtonEffect("pattern"); applyPattern("gosperglidergun"); }}
-         title="Apply block pattern"
-         aria-label="Apply block pattern"
-         style={{
-           background: "rgba(255,255,255,0.06)",
-           border: "none",
-           color: "#fff",
-           padding: 4,
-           borderRadius: 6,
-           width: 28,
-           height: 28,
-           display: "flex",
-           alignItems: "center",
-           justifyContent: "center",
-           cursor: "pointer",
-           transform: activeButton === "pattern" ? "scale(1.12)" : "none",
-           transition: "transform 140ms ease",
-         }}
-       >
-         {/* tiny indicator (could be replaced by an icon) */}
-         <div style={{ width: 10, height: 10, background: "#fff", borderRadius: 2 }} />
-       </button>
       </div>
 
       {/* floating play triangle - no background, only the triangle */}
@@ -537,7 +777,7 @@ export default function App() {
           alignItems: "center",
           padding: 6,
           borderRadius: 6,
-          background: "rgba(0,0,0,0.12)", // semi-transparent wrapper
+          background: "rgba(255, 255, 255, 0.70)", // semi-transparent wrapper
           pointerEvents: "auto",
         }}
         aria-hidden={false}
