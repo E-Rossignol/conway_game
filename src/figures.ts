@@ -22,9 +22,52 @@ export const patterns = {
     },
 	gosperglidergun: {
         blackCells: [
-			
+
         ] as Cell[],
     },
+	pentadecathlon: {
+		blackCells: [
+			{ x: 2, y: 0 },
+			{ x: 7, y: 0 },
+			{ x: 0, y: 1 },
+			{ x: 1, y: 1 },
+			{ x: 3, y: 1 },
+			{ x: 4, y: 1 },
+			{ x: 5, y: 1 },
+			{ x: 6, y: 1 },
+			{ x: 8, y: 1 },
+			{ x: 9, y: 1 },
+			{ x: 2, y: 2 },
+			{ x: 7, y: 2 },
+		] as Cell[],
+	},
+	queenbeeshuttle: {
+		blackCells: [
+			{ x: 9, y: 0 },
+			{ x: 7, y: 1 },
+			{ x: 9, y: 1 },
+			{ x: 6, y: 2 },
+			{ x: 8, y: 2 },
+			{ x: 0, y: 3 },
+			{ x: 1, y: 3 },
+			{ x: 5, y: 3 },
+			{ x: 8, y: 3 },
+			{ x: 0, y: 4 },
+			{ x: 1, y: 4 },
+			{ x: 6, y: 4 },
+			{ x: 8, y: 4 },
+			{ x: 7, y: 5 },
+			{ x: 9, y: 5 },
+			{ x: 18, y: 5 },
+			{ x: 19, y: 5 },
+			{ x: 9, y: 6 },
+			{ x: 18, y: 6 },
+			{ x: 20, y: 6 },
+			{ x: 20, y: 7 },
+			{ x: 20, y: 8 },
+			{ x: 21, y: 8 },
+		] as Cell[],
+	},
 };
 
 // Convenience: apply a pattern to a Uint8Array grid (mutates grid).

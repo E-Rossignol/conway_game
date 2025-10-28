@@ -83,6 +83,36 @@ export default class GridManager {
     return blackKeys;
   }
 
+  static generateSoup(): (grid: Uint8Array, cols: number, rows: number) => string[] {
+    // returns a function that fills the grid randomly inside the area [50,50) .. [550,550)
+    // but clamps to the actual grid bounds so it is safe on smaller grids.
+    return (grid: Uint8Array, cols: number, rows: number) => {
+      const out: string[] = [];
+      if (!grid || grid.length !== cols * rows) return out;
+
+      // define rectangular region: x in [50, 550), y in [50, 550)
+      const startX = 10;
+      const startY = 10;
+      const endXExclusive = Math.min(60, cols); // clamp to cols
+      const endYExclusive = Math.min(60, rows); // clamp to rows
+
+      // If region is outside grid, do nothing
+      if (startX >= endXExclusive || startY >= endYExclusive) return out;
+
+      for (let y = startY; y < endYExclusive; y++) {
+        const base = y * cols;
+        for (let x = startX; x < endXExclusive; x++) {
+          const idx = base + x;
+          // randomize 0 or 1
+          grid[idx] = Math.random() < 0.5 ? 1 : 0;
+          if (grid[idx]) out.push(`${x},${y}`);
+        }
+      }
+
+      return out;
+    };
+  }
+
   // static helper to run the same algorithm directly on a Uint8Array grid
   // grid: Uint8Array (length = cols * rows), values 0/1
   static simpleAlgoOnGrid(grid: Uint8Array, cols: number, rows: number) {

@@ -5,6 +5,7 @@ import playOnceIcon from "./assets/icons/next.png";
 import pauseIcon from "./assets/icons/pause.png";
 import playFastIcon from "./assets/icons/fast-forward.png";
 import menuIcon from "./assets/icons/menu.png";
+import soupIcon from "./assets/icons/soup.png";
 import GridManager from "./grid/GridManager";
 import { applyPatternToGrid, patterns } from "./figures";
 
@@ -12,8 +13,8 @@ const GRID_COLS = 1000;
 const GRID_ROWS = 1000;
 const DEFAULT_CELL_SIZE = 10; // valeur de référence (px pour 100%)
 const IS_TOAST_ENABLED = true; // activer/désactiver le toast d'info sur double-clic
-const DEFAULT_SLOW_SPEED_MS = 60; // intervalle par défaut pour autoplay lent
-const DEFAULT_FAST_SPEED_MS = 20; // intervalle par défaut pour autoplay rapide
+const DEFAULT_SLOW_SPEED_MS = 150; // intervalle par défaut pour autoplay lent
+const DEFAULT_FAST_SPEED_MS = 50; // intervalle par défaut pour autoplay rapide
 const DRAG_GHOST_OFFSET = 15; // pixels to the right of cursor for pattern ghost/placement
 
 export default function App() {
@@ -333,6 +334,20 @@ export default function App() {
       rafRef.current = null;
     });
   }
+
+  const applySoupPattern = () => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const fillSoup = GridManager.generateSoup();
+    fillSoup(grid, GRID_COLS, GRID_ROWS);
+    // request redraw
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    const z = lastUserZoomRef.current;
+    rafRef.current = requestAnimationFrame(() => {
+      draw(z);
+      rafRef.current = null;
+    });
+  };
 
   // 0 = paused, 1 = slow autoplay, 2 = fast autoplay
   const [timerState, setTimerState] = useState<number>(0);
@@ -788,11 +803,12 @@ export default function App() {
             transform: menuOpen ? "translateY(0)" : "translateY(-6px)",
           }}
         >
-          {/* Block pattern (compact, name above preview) */}
+          {/* Soup pattern (compact, name above preview) */}
           <div
             role="button"
             tabIndex={0}
-            onMouseDown={(e) => { triggerButtonEffect("pattern"); startPatternDrag("block", e); }}
+            onClick={
+              applySoupPattern}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -809,8 +825,8 @@ export default function App() {
               minWidth: 0,
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: "#000" }}>Block</div>
-            {renderPatternIcon("block", 28, "#000")}
+            <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: "#000" }}>Soup</div>
+            <img src={soupIcon} alt="Soup pattern" style={{ width: 28, height: 28, display: "block" }} />
           </div>
 
           {/* Glider pattern (compact, name above preview) */}
@@ -837,8 +853,58 @@ export default function App() {
             <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: "#000" }}>Glider</div>
             {renderPatternIcon("glider", 28, "#000")}
           </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            onMouseDown={(e) => { triggerButtonEffect("pattern"); startPatternDrag("pentadecathlon", e); }}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              padding: 6,
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.8)", // 0.8 transparent
+              color: "#000",
+              cursor: "grab",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+              width: "auto",
+              height: "auto",
+              minWidth: 0,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: "#000" }}>Pentadecathlon</div>
+            {renderPatternIcon("pentadecathlon", 28, "#000")}
+          </div>
+                    {/* Glider pattern (compact, name above preview) */}
+          <div
+            role="button"
+            tabIndex={0}
+            onMouseDown={(e) => { triggerButtonEffect("pattern"); startPatternDrag("queenbeeshuttle", e); }}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              padding: 6,
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.8)", // 0.8 transparent
+              color: "#000",
+              cursor: "grab",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+              width: "auto",
+              height: "auto",
+              minWidth: 0,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: "#000" }}>Queen Bee Shuttle</div>
+            {renderPatternIcon("queenbeeshuttle", 28, "#000")}
+          </div>
         </div>
       </div>
+
+      
 
       {/* conteneur scrollable qui montre une surface logique (taille du spacer dépend du zoom) */}
       <div
