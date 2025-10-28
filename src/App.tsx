@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, type JSX } from "react";
 import playIcon from "./assets/icons/play.png";
 import resetIcon from "./assets/icons/reset.png";
 import playOnceIcon from "./assets/icons/next.png";
@@ -14,6 +14,7 @@ const DEFAULT_CELL_SIZE = 10; // valeur de référence (px pour 100%)
 const IS_TOAST_ENABLED = true; // activer/désactiver le toast d'info sur double-clic
 const DEFAULT_SLOW_SPEED_MS = 60; // intervalle par défaut pour autoplay lent
 const DEFAULT_FAST_SPEED_MS = 20; // intervalle par défaut pour autoplay rapide
+const DRAG_GHOST_OFFSET = 15; // pixels to the right of cursor for pattern ghost/placement
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -333,13 +334,17 @@ export default function App() {
     });
   }
 
+  // 0 = paused, 1 = slow autoplay, 2 = fast autoplay
+  const [timerState, setTimerState] = useState<number>(0);
+
   // start autoplay: accept a boolean to decide whether to run immediately,
   // then schedule periodic runs every 500ms
   const startAutoPlay = (runFast: boolean = false) => {
-    if (autoTimerRef.current != null) 
-    {
+    // stop any existing timer first (keeps state consistent)
+    if (autoTimerRef.current != null) {
       stopAutoPlay();
     }
+    setTimerState(runFast ? 2 : 1);
     // schedule periodic runs
     autoTimerRef.current = window.setInterval(() => {
       runConwayStep();
@@ -352,6 +357,7 @@ export default function App() {
       clearInterval(autoTimerRef.current);
       autoTimerRef.current = null;
     }
+    setTimerState(0);
   };
 
   // cleanup autoplay on unmount
@@ -388,12 +394,14 @@ export default function App() {
 
   // define stable handlers once
   useEffect(() => {
-    windowHandlersRef.current.move = (ev: MouseEvent) => {
+    // accept both MouseEvent and PointerEvent
+    windowHandlersRef.current.move = (ev: MouseEvent | PointerEvent) => {
       if (!draggingPatternRef.current) return;
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      dragPosRef.current = { cx: ev.clientX - rect.left, cy: ev.clientY - rect.top };
+      // place preview DRAG_GHOST_OFFSET to the right of the cursor
+      dragPosRef.current = { cx: ev.clientX - rect.left + DRAG_GHOST_OFFSET, cy: ev.clientY - rect.top };
       const z = lastUserZoomRef.current;
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
@@ -407,13 +415,15 @@ export default function App() {
       if (bounds) {
         const offsetX = bounds.relX * cellSizeCss + cellSizeCss / 2;
         const offsetY = bounds.relY * cellSizeCss + cellSizeCss / 2;
-        setGhostPos({ x: ev.clientX - offsetX, y: ev.clientY - offsetY });
+        // ghost anchored so the pattern appears DRAG_GHOST_OFFSET to the right of the cursor
+        setGhostPos({ x: ev.clientX - offsetX + DRAG_GHOST_OFFSET, y: ev.clientY - offsetY });
       } else {
-        setGhostPos({ x: ev.clientX, y: ev.clientY });
+        setGhostPos({ x: ev.clientX + DRAG_GHOST_OFFSET, y: ev.clientY });
       }
     };
 
-    windowHandlersRef.current.up = (ev: MouseEvent) => {
+    // accept both MouseEvent and PointerEvent
+    windowHandlersRef.current.up = (ev: MouseEvent | PointerEvent) => {
       if (!draggingPatternRef.current) return;
       const container = containerRef.current;
       const grid = gridRef.current;
@@ -430,7 +440,8 @@ export default function App() {
       const cy = ev.clientY - rect.top;
       const z = lastUserZoomRef.current;
       const cellSize = Math.max(1, Math.round((DEFAULT_CELL_SIZE * z) / 100));
-      const absoluteX = container.scrollLeft + cx;
+      // account for the DRAG_GHOST_OFFSET right offset when deciding where to place the pattern
+      const absoluteX = container.scrollLeft + cx + DRAG_GHOST_OFFSET;
       const absoluteY = container.scrollTop + cy;
       const col = Math.floor(absoluteX / cellSize);
       const row = Math.floor(absoluteY / cellSize);
@@ -447,6 +458,15 @@ export default function App() {
       });
       // restore cursor
       document.body.style.cursor = "";
+      // remove listeners we added in startPatternDrag (both mouse and pointer variants)
+      if (windowHandlersRef.current.move) {
+        window.removeEventListener("mousemove", windowHandlersRef.current.move as EventListener);
+        window.removeEventListener("pointermove", windowHandlersRef.current.move as EventListener);
+      }
+      if (windowHandlersRef.current.up) {
+        window.removeEventListener("mouseup", windowHandlersRef.current.up as EventListener);
+        window.removeEventListener("pointerup", windowHandlersRef.current.up as EventListener);
+      }
     };
 
     return () => {
@@ -537,13 +557,21 @@ export default function App() {
     const container = containerRef.current;
     if (container) {
       const rect = container.getBoundingClientRect();
-      dragPosRef.current = { cx: e.clientX - rect.left, cy: e.clientY - rect.top };
+      // initial preview position: DRAG_GHOST_OFFSET to the right of the cursor
+      dragPosRef.current = { cx: e.clientX - rect.left + DRAG_GHOST_OFFSET, cy: e.clientY - rect.top };
     } else {
-      dragPosRef.current = { cx: 0, cy: 0 };
+      dragPosRef.current = { cx: DRAG_GHOST_OFFSET, cy: 0 };
     }
     // attach global listeners to track movement and drop (use stable refs)
-    if (windowHandlersRef.current.move) window.addEventListener("mousemove", windowHandlersRef.current.move);
-    if (windowHandlersRef.current.up) window.addEventListener("mouseup", windowHandlersRef.current.up);
+    // add both mouse and pointer listeners for robustness
+    if (windowHandlersRef.current.move) {
+      window.addEventListener("mousemove", windowHandlersRef.current.move as EventListener);
+      window.addEventListener("pointermove", windowHandlersRef.current.move as EventListener);
+    }
+    if (windowHandlersRef.current.up) {
+      window.addEventListener("mouseup", windowHandlersRef.current.up as EventListener);
+      window.addEventListener("pointerup", windowHandlersRef.current.up as EventListener);
+    }
     // make the drag visible immediately and show grabbing cursor
     document.body.style.cursor = "grabbing";
     const z = lastUserZoomRef.current;
@@ -559,29 +587,52 @@ export default function App() {
     if (bounds) {
       const offsetX = bounds.relX * cellSizeCss + cellSizeCss / 2;
       const offsetY = bounds.relY * cellSizeCss + cellSizeCss / 2;
-      setGhostPos({ x: e.clientX - offsetX , y: e.clientY - offsetY});
+      // offset ghost DRAG_GHOST_OFFSET to the right of the cursor
+      setGhostPos({ x: e.clientX - offsetX + DRAG_GHOST_OFFSET , y: e.clientY - offsetY});
     } else {
-      setGhostPos({ x: e.clientX, y: e.clientY });
+      setGhostPos({ x: e.clientX + DRAG_GHOST_OFFSET, y: e.clientY });
     }
   };
 
-  const stopPatternDrag = () => {
-    setDraggingPattern(null);
-    dragPosRef.current = null;
-    // remove the same stable listeners
-    if (windowHandlersRef.current.move) window.removeEventListener("mousemove", windowHandlersRef.current.move);
-    if (windowHandlersRef.current.up) window.removeEventListener("mouseup", windowHandlersRef.current.up);
-    // redraw final state
-    const z = lastUserZoomRef.current;
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      draw(z);
-      rafRef.current = null;
-    });
-    // clear ghost and restore cursor
-    setGhostPos(null);
-    document.body.style.cursor = "";
-  };
+
+  // toast for cells
+  const [ctrlToast, setCtrlToast] = useState<string | null>(null);
+  const ctrlTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (ev: KeyboardEvent) => {
+      // Ctrl+T (case insensitive)
+      if ((ev.key === "l" || ev.key === "L")) {
+        ev.preventDefault();
+        const grid = gridRef.current;
+        if (!grid) return;
+        const cells_list = GridManager.getBlackKeysOnGrid(grid, GRID_COLS, GRID_ROWS);
+        let s = "";
+        if (cells_list.length > 0) {
+          s = cells_list.join(" ; ");
+        } else {
+          s = "(no black cells)";
+        }
+        setCtrlToast(s);
+        if (ctrlTimerRef.current != null) {
+          clearTimeout(ctrlTimerRef.current);
+        }
+        ctrlTimerRef.current = window.setTimeout(() => {
+          setCtrlToast(null);
+          ctrlTimerRef.current = null;
+        }, 200000);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      if (ctrlTimerRef.current != null) {
+        clearTimeout(ctrlTimerRef.current);
+        ctrlTimerRef.current = null;
+      }
+    };
+  }, []);
+  const active_color = "#ff0000ff";
 
   return (
     <div
@@ -674,106 +725,54 @@ export default function App() {
             transform: menuOpen ? "translateY(0)" : "translateY(-6px)",
           }}
         >
+          {/* Block pattern (compact, name above preview) */}
           <div
             role="button"
             tabIndex={0}
             onMouseDown={(e) => { triggerButtonEffect("pattern"); startPatternDrag("block", e); }}
             style={{
-              width: 40,
-              height: 40,
-              background: "rgba(255,255,255,0.9)",
-              color: "#000",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 6,
-              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-              cursor: "grab",
+              gap: 6,
               padding: 6,
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.8)", // 0.8 transparent
+              color: "#000",
+              cursor: "grab",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+              width: "auto",
+              height: "auto",
+              minWidth: 0,
             }}
           >
-            {renderPatternIcon("block", 20, "#000")}
+            <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: "#000" }}>Block</div>
+            {renderPatternIcon("block", 28, "#000")}
           </div>
 
+          {/* Glider pattern (compact, name above preview) */}
           <div
             role="button"
             tabIndex={0}
             onMouseDown={(e) => { triggerButtonEffect("pattern"); startPatternDrag("glider", e); }}
             style={{
-              width: 40,
-              height: 40,
-              background: "rgba(255,255,255,0.9)",
-              color: "#000",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 6,
-              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-              cursor: "grab",
+              gap: 6,
               padding: 6,
-            }}
-          >
-            {renderPatternIcon("glider", 20, "#000")}
-          </div>
-
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => { triggerButtonEffect("step"); runConwayStep(); }}
-            style={{
-              width: 120,
-              height: 34,
-              background: "rgba(255,255,255,0.9)",
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.8)", // 0.8 transparent
               color: "#000",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 6,
-              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-              cursor: "pointer",
+              cursor: "grab",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+              width: "auto",
+              height: "auto",
+              minWidth: 0,
             }}
           >
-            Step
-          </div>
-
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => { triggerButtonEffect("play"); startAutoPlay(); }}
-            style={{
-              width: 120,
-              height: 34,
-              background: "rgba(255,255,255,0.9)",
-              color: "#000",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 6,
-              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-              cursor: "pointer",
-            }}
-          >
-            Play
-          </div>
-
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => { triggerButtonEffect("stop"); stopAutoPlay(); }}
-            style={{
-              width: 120,
-              height: 34,
-              background: "rgba(255,255,255,0.9)",
-              color: "#000",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 6,
-              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-              cursor: "pointer",
-            }}
-          >
-            Stop
+            <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: "#000" }}>Glider</div>
+            {renderPatternIcon("glider", 28, "#000")}
           </div>
         </div>
       </div>
@@ -825,6 +824,28 @@ export default function App() {
         </div>
       )}
 
+      {ctrlToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 12,
+            transform: "translateX(-50%)",
+            zIndex: 400,
+            background: "rgba(0,0,0,0.8)",
+            color: "#fff",
+            padding: "8px 12px",
+            borderRadius: 6,
+            fontSize: 13,
+            pointerEvents: "none",
+          }}
+        >
+          {ctrlToast}
+        </div>
+      )}
+
       {/* canvas overlay placé à l'intérieur du même parent et couvrant exactement la zone intérieure */}
       <canvas
         ref={canvasRef}
@@ -839,7 +860,6 @@ export default function App() {
           pointerEvents: "none",
         }}
       />
-
       {/* barre de zoom (bottom-right, 20px du bas du div principal) - rendu plus compact, step 10% */}
       <div
         style={{
@@ -943,6 +963,9 @@ export default function App() {
             display: "block",
             transform: activeButton === "play" ? "scale(1.2)" : "none",
             transition: "transform 140ms ease",
+            padding: 6,
+            borderRadius: 8,
+            background: timerState === 1 ? active_color : "transparent",
           }}
         />
         <img
@@ -958,6 +981,9 @@ export default function App() {
             display: "block",
             transform: activeButton === "playFast" ? "scale(1.2)" : "none",
             transition: "transform 140ms ease",
+            padding: 6,
+            borderRadius: 8,
+            background: timerState === 2 ? active_color : "transparent",
           }}
         />
         <img
@@ -973,6 +999,9 @@ export default function App() {
             display: "block",
             transform: activeButton === "pause" ? "scale(1.2)" : "none",
             transition: "transform 140ms ease",
+            padding: 6,
+            borderRadius: 8,
+            background: timerState === 0 ? active_color : "transparent",
           }}
         />
 
@@ -998,6 +1027,31 @@ export default function App() {
         >
           <img src={resetIcon} alt="Reset" style={{ width: 20, height: 20, display: "block" }} />
         </button>
+      </div>
+
+      {/* floating state indicator (bottom-left) */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: 20,
+          bottom: 20,
+          zIndex: 200,
+          pointerEvents: "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 44,
+          height: 44,
+          borderRadius: 8,
+          background: "rgba(0,0,0,0.55)",
+        }}
+      >
+        <img
+          src={timerState === 0 ? pauseIcon : timerState === 1 ? playIcon : playFastIcon}
+          alt="State"
+          style={{ width: 24, height: 24, display: "block", opacity: 0.98 }}
+        />
       </div>
     </div>
   );

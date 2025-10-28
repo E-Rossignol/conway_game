@@ -69,6 +69,20 @@ export default class GridManager {
     return out;
   }
 
+  static getBlackKeysOnGrid(grid: Uint8Array, cols: number, rows: number): string[] {
+    const blackKeys: string[] = [];
+    if (!grid || grid.length !== cols * rows) return blackKeys;
+
+    for (let r = 0; r < rows; r++) {
+      const base = r * cols;
+      for (let c = 0; c < cols; c++) {
+        if (grid[base + c]) blackKeys.push(`${c},${r}`);
+      }
+    }
+    console.log("Black keys:", blackKeys);
+    return blackKeys;
+  }
+
   // static helper to run the same algorithm directly on a Uint8Array grid
   // grid: Uint8Array (length = cols * rows), values 0/1
   static simpleAlgoOnGrid(grid: Uint8Array, cols: number, rows: number) {
