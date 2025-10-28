@@ -392,6 +392,63 @@ export default function App() {
   const draggingPatternRef = useRef<keyof typeof patterns | null>(null);
   const windowHandlersRef = useRef<{ move?: (ev: MouseEvent) => void; up?: (ev: MouseEvent) => void }>({});
 
+  // movable menu state + refs for pointer drag
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 16, y: 16 });
+  const menuDraggingRef = useRef<boolean>(false);
+  const menuDragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
+  const menuMoveHandlerRef = useRef<(ev: PointerEvent) => void>();
+  const menuUpHandlerRef = useRef<(ev: PointerEvent) => void>();
+  const isMenuMovedRef = useRef<boolean>(false);
+
+  const onMenuPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    // start dragging
+    menuDraggingRef.current = true;
+    isMenuMovedRef.current = false;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    menuDragOffsetRef.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+
+    // stable move handler
+    menuMoveHandlerRef.current = (ev: PointerEvent) => {
+      if (!menuDraggingRef.current || !menuDragOffsetRef.current) return;
+      const x = ev.clientX - menuDragOffsetRef.current.dx;
+      const y = ev.clientY - menuDragOffsetRef.current.dy;
+      // mark moved if distance > small threshold
+      if (Math.abs(ev.clientX - (rect.left + menuDragOffsetRef.current.dx)) > 2 || Math.abs(ev.clientY - (rect.top + menuDragOffsetRef.current.dy)) > 2) {
+        isMenuMovedRef.current = true;
+      }
+      // clamp inside window with small margins
+      const btnW = rect.width || 42;
+      const btnH = rect.height || 34;
+      const clampX = Math.min(Math.max(x, 5), window.innerWidth - btnW - 5);
+      const clampY = Math.min(Math.max(y, 5), window.innerHeight - btnH - 5);
+      setMenuPos({ x: clampX, y: clampY });
+    };
+
+    // stable up handler
+    menuUpHandlerRef.current = (ev: PointerEvent) => {
+      menuDraggingRef.current = false;
+      menuDragOffsetRef.current = null;
+      // cleanup listeners
+      if (menuMoveHandlerRef.current) {
+        window.removeEventListener("pointermove", menuMoveHandlerRef.current);
+      }
+      if (menuUpHandlerRef.current) {
+        window.removeEventListener("pointerup", menuUpHandlerRef.current);
+      }
+      // if it was a click (no meaningful move), toggle menu; else keep current open state
+      if (!isMenuMovedRef.current) {
+        setMenuOpen((v) => !v);
+      }
+      document.body.style.cursor = "";
+    };
+
+    // attach
+    if (menuMoveHandlerRef.current) window.addEventListener("pointermove", menuMoveHandlerRef.current);
+    if (menuUpHandlerRef.current) window.addEventListener("pointerup", menuUpHandlerRef.current);
+    document.body.style.cursor = "grabbing";
+  };
+
   // define stable handlers once
   useEffect(() => {
     // accept both MouseEvent and PointerEvent
@@ -632,8 +689,6 @@ export default function App() {
       }
     };
   }, []);
-  const active_color = "#ff0000ff";
-
   return (
     <div
       style={{
@@ -682,20 +737,28 @@ export default function App() {
       <div
         style={{
           position: "absolute",
-          left: 16,
-          top: 16,
+          left: menuPos.x,
+          top: menuPos.y,
           zIndex: 200,
           display: "flex",
           flexDirection: "column",
           alignItems: "flex-start",
           gap: 8,
           pointerEvents: "auto",
+          touchAction: "none",
         }}
       >
         <button
-          onClick={toggleMenu}
           aria-expanded={menuOpen}
           title={menuOpen ? "Close menu" : "Open menu"}
+          onPointerDown={onMenuPointerDown}
+          // keyboard decl: allow Enter/Space to toggle when focused
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setMenuOpen((v) => !v);
+            }
+          }}
           style={{
             width: 42,
             height: 34,
@@ -706,10 +769,10 @@ export default function App() {
             borderRadius: 6,
             border: "none",
             background: "rgba(255, 255, 255, 0.9)",
-            cursor: "pointer",
+            cursor: "grab",
           }}
         >
-          <img src={menuIcon} alt="Menu" style={{ width: 30, height: 30, display: "block" }} />
+          <img src={menuIcon} alt="Menu" style={{ width: 30, height: 30, display: "block", pointerEvents: "none" }} />
         </button>
 
         {/* expanded panel: four rectangles */}
@@ -965,7 +1028,7 @@ export default function App() {
             transition: "transform 140ms ease",
             padding: 6,
             borderRadius: 8,
-            background: timerState === 1 ? active_color : "transparent",
+            background: "transparent",
           }}
         />
         <img
@@ -983,7 +1046,7 @@ export default function App() {
             transition: "transform 140ms ease",
             padding: 6,
             borderRadius: 8,
-            background: timerState === 2 ? active_color : "transparent",
+            background: "transparent",
           }}
         />
         <img
@@ -1001,7 +1064,7 @@ export default function App() {
             transition: "transform 140ms ease",
             padding: 6,
             borderRadius: 8,
-            background: timerState === 0 ? active_color : "transparent",
+            background: "transparent",
           }}
         />
 
@@ -1044,7 +1107,7 @@ export default function App() {
           width: 44,
           height: 44,
           borderRadius: 8,
-          background: "rgba(0,0,0,0.55)",
+          background: "#ff4a4aff",
         }}
       >
         <img
