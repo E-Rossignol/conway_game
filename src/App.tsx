@@ -1173,7 +1173,7 @@ export default function App() {
           width: 44,
           height: 44,
           borderRadius: 8,
-          background: "#ff4a4aff",
+          background: timerState === 0 ? "#ff4a4aff": "#13d501ff",
         }}
       >
         <img
