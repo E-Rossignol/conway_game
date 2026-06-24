@@ -11,19 +11,23 @@ import { applyPatternToGrid, patterns } from "./figures";
 
 const GRID_COLS = 1000;
 const GRID_ROWS = 1000;
-const DEFAULT_CELL_SIZE = 10; // valeur de référence (px pour 100%)
-const IS_TOAST_ENABLED = true; // activer/désactiver le toast d'info sur double-clic
-const DEFAULT_SLOW_SPEED_MS = 150; // intervalle par défaut pour autoplay lent
-const DEFAULT_FAST_SPEED_MS = 50; // intervalle par défaut pour autoplay rapide
-const DRAG_GHOST_OFFSET = 15; // pixels to the right of cursor for pattern ghost/placement
+const DEFAULT_CELL_SIZE = 10;
+const IS_TOAST_ENABLED = true;
+const DEFAULT_SLOW_SPEED_MS = 150;
+const DEFAULT_FAST_SPEED_MS = 50;
+const DRAG_GHOST_OFFSET = 15;
 
+/**
+ * Top-level App component that renders a large, scrollable canvas-backed
+ * Conway Game of Life grid with pattern-dragging, autoplay and export helpers.
+ */
 export default function App() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
-  const gridRef = useRef<Uint8Array | null>(null); // 0 = white, 1 = black
-  const autoTimerRef = useRef<number | null>(null); // interval id for autoplay
-  const flashTimerRef = useRef<number | null>(null); // timeout id for per-button effect
+  const gridRef = useRef<Uint8Array | null>(null);
+  const autoTimerRef = useRef<number | null>(null);
+  const flashTimerRef = useRef<number | null>(null);
   const [activeButton, setActiveButton] = useState<string | null>(null);
   const controllerRef = useRef<{ reset: () => void }>({
     reset: () => {
@@ -38,20 +42,15 @@ export default function App() {
     },
   });
 
-  // zoom en pourcentage (10..300), initial 100%
   const [zoomPercent, setZoomPercent] = useState<number>(100);
-
-  // persist the user's chosen zoom so timers/effects won't overwrite it
   const lastUserZoomRef = useRef<number>(100);
 
-  // initialise toute la grille en mémoire au démarrage
   useEffect(() => {
     if (!gridRef.current) {
-      gridRef.current = new Uint8Array(GRID_COLS * GRID_ROWS); // initialisé à 0
+      gridRef.current = new Uint8Array(GRID_COLS * GRID_ROWS);
     }
   }, []);
 
-  // dessine la portion visible en fonction du scroll, lit dans gridRef
   function draw(zoom = zoomPercent) {
     const container = containerRef.current;
     const canvas = canvasRef.current;
@@ -63,10 +62,7 @@ export default function App() {
     const widthCss = container.clientWidth;
     const heightCss = container.clientHeight;
 
-    // taille effective de cellule en px CSS selon le zoom
     const cellSize = Math.max(1, Math.round((DEFAULT_CELL_SIZE * zoom) / 100));
-
-    // HiDPI : backing store en device pixels
     const dpr = window.devicePixelRatio || 1;
     const widthDev = Math.round(widthCss * dpr);
     const heightDev = Math.round(heightCss * dpr);
@@ -75,34 +71,26 @@ export default function App() {
     canvas.width = widthDev;
     canvas.height = heightDev;
 
-    // important : travailler en device pixels (pas de scale/transform)
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
 
-    // fond noir - en device pixels
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, widthDev, heightDev);
 
-    // positions de la fenêtre logique (CSS pixels)
     const scrollLeft = container.scrollLeft;
     const scrollTop = container.scrollTop;
 
-    // première cellule visible (indices)
     const firstCol = Math.floor(scrollLeft / cellSize);
     const firstRow = Math.floor(scrollTop / cellSize);
 
-    // nombre de colonnes/rows visibles (+1 marge)
     const visibleCols = Math.min(GRID_COLS - firstCol, Math.ceil(widthCss / cellSize) + 1);
     const visibleRows = Math.min(GRID_ROWS - firstRow, Math.ceil(heightCss / cellSize) + 1);
 
-    // offset pixel pour dessiner la première cellule (CSS pixels)
     const offsetXCss = -(scrollLeft - firstCol * cellSize);
     const offsetYCss = -(scrollTop - firstRow * cellSize);
 
-    // convertir taille cellule en device pixels
     const cellDev = Math.max(1, Math.round(cellSize * dpr));
 
-    // dessiner les cellules visibles d'après la grille en mémoire (en device pixels)
     for (let r = 0; r < visibleRows; r++) {
       const rowIndex = firstRow + r;
       for (let c = 0; c < visibleCols; c++) {
@@ -119,11 +107,9 @@ export default function App() {
       }
     }
 
-    // dessiner les bordures (bleu foncé) en device pixels — lignes nettes avec 0.5 offset
     ctx.strokeStyle = "#7070706e";
     ctx.lineWidth = 1;
 
-    // verticales : i from 0..visibleCols
     for (let i = 0; i <= visibleCols; i++) {
       const xCss = offsetXCss + i * cellSize;
       const xDev = xCss * dpr;
@@ -134,7 +120,6 @@ export default function App() {
       ctx.stroke();
     }
 
-    // horizontales : j from 0..visibleRows
     for (let j = 0; j <= visibleRows; j++) {
       const yCss = offsetYCss + j * cellSize;
       const yDev = yCss * dpr;
@@ -145,11 +130,9 @@ export default function App() {
       ctx.stroke();
     }
 
-    // preview dragged pattern (semi-transparent) if any
     if (draggingPattern && dragPosRef.current) {
       const pat = patterns[draggingPattern];
       if (pat && pat.blackCells.length > 0) {
-        // determine which grid cell is under the cursor
         const cx = dragPosRef.current.cx;
         const cy = dragPosRef.current.cy;
         const colUnder = Math.floor((container.scrollLeft + cx) / cellSize);
@@ -158,7 +141,6 @@ export default function App() {
         for (const cell of pat.blackCells) {
           const gx = colUnder + cell.x;
           const gy = rowUnder + cell.y;
-          // only draw if visible
           const visC = gx - firstCol;
           const visR = gy - firstRow;
           if (visC < 0 || visR < 0 || visC >= visibleCols || visR >= visibleRows) continue;
@@ -176,7 +158,6 @@ export default function App() {
     const container = containerRef.current;
     if (!container) return;
 
-    // dessiner initialement using the user's current zoom
     draw(lastUserZoomRef.current);
 
     const onScroll = () => {
@@ -203,12 +184,9 @@ export default function App() {
       window.removeEventListener("resize", onResize);
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomPercent]);
 
-  // toggle d'une cellule (click) : met à jour toute la grille en mémoire puis redraw
   const onContainerClick = (e: React.MouseEvent) => {
-    // when autoplay is running or user is dragging a pattern, disable manual cell toggling
     if (autoTimerRef.current != null) return;
     if (draggingPattern) return;
     const container = containerRef.current;
@@ -218,7 +196,6 @@ export default function App() {
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
 
-    // position absolue dans la grille logique (utilise la taille actuelle des cellules)
     const cellSize = Math.max(1, Math.round((DEFAULT_CELL_SIZE * zoomPercent) / 100));
     const absoluteX = container.scrollLeft + cx;
     const absoluteY = container.scrollTop + cy;
@@ -228,7 +205,6 @@ export default function App() {
 
     const idx = row * GRID_COLS + col;
     grid[idx] = grid[idx] ? 0 : 1;
-    // redraw (raf)
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     const z = lastUserZoomRef.current;
     rafRef.current = requestAnimationFrame(() => {
@@ -237,26 +213,21 @@ export default function App() {
     });
   };
 
-  // slider handlers
   const onZoomChange = (val: number) => {
     setZoomPercent(val);
     lastUserZoomRef.current = val;
-    // updating spacer size implicitly; redraw triggered by useEffect dependency
   };
 
   const spacerWidth = GRID_COLS * Math.max(1, Math.round((DEFAULT_CELL_SIZE * zoomPercent) / 100));
   const spacerHeight = GRID_ROWS * Math.max(1, Math.round((DEFAULT_CELL_SIZE * zoomPercent) / 100));
 
-  // helper to get a cell's attributes (derive x,y,state from grid)
   const getCellAttributes = (col: number, row: number) => {
     const grid = gridRef.current;
-    const inside =
-      col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS && !!grid;
+    const inside = col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS && !!grid;
     const state = inside ? !!grid![row * GRID_COLS + col] : false;
     return { x: col, y: row, state };
   };
 
-  // info toast state and timer ref
   const [infoToast, setInfoToast] = useState<
     | {
         visible: true;
@@ -270,7 +241,6 @@ export default function App() {
   >(null);
   const infoTimerRef = useRef<number | null>(null);
 
-  // cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (infoTimerRef.current != null) {
@@ -284,7 +254,6 @@ export default function App() {
     };
   }, []);
 
-  // double-click handler to show attributes toast
   const onContainerDoubleClick = (e: React.MouseEvent) => {
     if (!IS_TOAST_ENABLED) return;
     const container = containerRef.current;
@@ -303,13 +272,10 @@ export default function App() {
 
     const attrs = getCellAttributes(col, row);
 
-    // compute position inside the parent (pixels relative to the main fixed div)
-    // place the toast above the cell if possible
     const left = col * cellSize - container.scrollLeft;
-    let top = row * cellSize - container.scrollTop - 28; // put above cell
-    if (top < 4) top = row * cellSize - container.scrollTop + cellSize + 4; // fallback below cell
+    let top = row * cellSize - container.scrollTop - 28;
+    if (top < 4) top = row * cellSize - container.scrollTop + cellSize + 4;
 
-    // show toast for 2 seconds
     setInfoToast({ visible: true, left, top, col: attrs.x, row: attrs.y, state: attrs.state });
     if (infoTimerRef.current != null) {
       clearTimeout(infoTimerRef.current);
@@ -320,27 +286,23 @@ export default function App() {
     }, 2000);
   };
 
-  // run the "simpleAlgo" directly on the Uint8Array gridRef
   const runConwayStep = () => {
     const grid = gridRef.current;
     if (!grid) return;
-    // delegate to GridManager's static implementation
     GridManager.conwayStepOnGrid(grid, GRID_COLS, GRID_ROWS);
-    // request redraw
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     const z = lastUserZoomRef.current;
     rafRef.current = requestAnimationFrame(() => {
       draw(z);
       rafRef.current = null;
     });
-  }
+  };
 
   const applySoupPattern = () => {
     const grid = gridRef.current;
     if (!grid) return;
     const fillSoup = GridManager.generateSoup();
     fillSoup(grid, GRID_COLS, GRID_ROWS);
-    // request redraw
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     const z = lastUserZoomRef.current;
     rafRef.current = requestAnimationFrame(() => {
@@ -349,24 +311,18 @@ export default function App() {
     });
   };
 
-  // 0 = paused, 1 = slow autoplay, 2 = fast autoplay
   const [timerState, setTimerState] = useState<number>(0);
 
-  // start autoplay: accept a boolean to decide whether to run immediately,
-  // then schedule periodic runs every 500ms
   const startAutoPlay = (runFast: boolean = false) => {
-    // stop any existing timer first (keeps state consistent)
     if (autoTimerRef.current != null) {
       stopAutoPlay();
     }
     setTimerState(runFast ? 2 : 1);
-    // schedule periodic runs
     autoTimerRef.current = window.setInterval(() => {
       runConwayStep();
     }, runFast ? DEFAULT_FAST_SPEED_MS : DEFAULT_SLOW_SPEED_MS);
   };
 
-  // stop autoplay
   const stopAutoPlay = () => {
     if (autoTimerRef.current != null) {
       clearInterval(autoTimerRef.current);
@@ -375,7 +331,6 @@ export default function App() {
     setTimerState(0);
   };
 
-  // cleanup autoplay on unmount
   useEffect(() => {
     return () => {
       if (autoTimerRef.current != null) {
@@ -385,9 +340,7 @@ export default function App() {
     };
   }, []);
 
-  // trigger a quick per-button visual effect then revert
   const triggerButtonEffect = (id: string, duration = 100) => {
-    // clear any running effect
     if (flashTimerRef.current != null) {
       clearTimeout(flashTimerRef.current);
       flashTimerRef.current = null;
@@ -398,16 +351,12 @@ export default function App() {
       flashTimerRef.current = null;
     }, duration);
   };
-
-  // top-left expandable triple-line menu
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const toggleMenu = () => setMenuOpen((v) => !v);
 
-  // stable refs for dragging handlers to ensure removeEventListener works
   const draggingPatternRef = useRef<keyof typeof patterns | null>(null);
   const windowHandlersRef = useRef<{ move?: (ev: MouseEvent) => void; up?: (ev: MouseEvent) => void }>({});
 
-  // movable menu state + refs for pointer drag
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 16, y: 16 });
   const menuDraggingRef = useRef<boolean>(false);
   const menuDragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
@@ -417,22 +366,18 @@ export default function App() {
 
   const onMenuPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
-    // start dragging
     menuDraggingRef.current = true;
     isMenuMovedRef.current = false;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     menuDragOffsetRef.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
 
-    // stable move handler
     menuMoveHandlerRef.current = (ev: PointerEvent) => {
       if (!menuDraggingRef.current || !menuDragOffsetRef.current) return;
       const x = ev.clientX - menuDragOffsetRef.current.dx;
       const y = ev.clientY - menuDragOffsetRef.current.dy;
-      // mark moved if distance > small threshold
       if (Math.abs(ev.clientX - (rect.left + menuDragOffsetRef.current.dx)) > 2 || Math.abs(ev.clientY - (rect.top + menuDragOffsetRef.current.dy)) > 2) {
         isMenuMovedRef.current = true;
       }
-      // clamp inside window with small margins
       const btnW = rect.width || 42;
       const btnH = rect.height || 34;
       const clampX = Math.min(Math.max(x, 5), window.innerWidth - btnW - 5);
@@ -440,39 +385,32 @@ export default function App() {
       setMenuPos({ x: clampX, y: clampY });
     };
 
-    // stable up handler
     menuUpHandlerRef.current = (ev: PointerEvent) => {
       menuDraggingRef.current = false;
       menuDragOffsetRef.current = null;
-      // cleanup listeners
       if (menuMoveHandlerRef.current) {
         window.removeEventListener("pointermove", menuMoveHandlerRef.current);
       }
       if (menuUpHandlerRef.current) {
         window.removeEventListener("pointerup", menuUpHandlerRef.current);
       }
-      // if it was a click (no meaningful move), toggle menu; else keep current open state
       if (!isMenuMovedRef.current) {
         setMenuOpen((v) => !v);
       }
       document.body.style.cursor = "";
     };
 
-    // attach
     if (menuMoveHandlerRef.current) window.addEventListener("pointermove", menuMoveHandlerRef.current);
     if (menuUpHandlerRef.current) window.addEventListener("pointerup", menuUpHandlerRef.current);
     document.body.style.cursor = "grabbing";
   };
 
-  // define stable handlers once
   useEffect(() => {
-    // accept both MouseEvent and PointerEvent
     windowHandlersRef.current.move = (ev: MouseEvent | PointerEvent) => {
       if (!draggingPatternRef.current) return;
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      // place preview DRAG_GHOST_OFFSET to the right of the cursor
       dragPosRef.current = { cx: ev.clientX - rect.left + DRAG_GHOST_OFFSET, cy: ev.clientY - rect.top };
       const z = lastUserZoomRef.current;
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
@@ -480,27 +418,22 @@ export default function App() {
         draw(z);
         rafRef.current = null;
       });
-      // update ghost DOM position (client coords)
-      // compute offset so the cursor sits at center of pattern's (0,0) cell
       const bounds = getPatternBounds(draggingPatternRef.current!);
       const cellSizeCss = Math.max(1, Math.round((DEFAULT_CELL_SIZE * lastUserZoomRef.current) / 100));
       if (bounds) {
         const offsetX = bounds.relX * cellSizeCss + cellSizeCss / 2;
         const offsetY = bounds.relY * cellSizeCss + cellSizeCss / 2;
-        // ghost anchored so the pattern appears DRAG_GHOST_OFFSET to the right of the cursor
         setGhostPos({ x: ev.clientX - offsetX + DRAG_GHOST_OFFSET, y: ev.clientY - offsetY });
       } else {
         setGhostPos({ x: ev.clientX + DRAG_GHOST_OFFSET, y: ev.clientY });
       }
     };
 
-    // accept both MouseEvent and PointerEvent
     windowHandlersRef.current.up = (ev: MouseEvent | PointerEvent) => {
       if (!draggingPatternRef.current) return;
       const container = containerRef.current;
       const grid = gridRef.current;
       if (!container || !grid) {
-        // fallback cleanup
         setDraggingPattern(null);
         draggingPatternRef.current = null;
         dragPosRef.current = null;
@@ -512,13 +445,11 @@ export default function App() {
       const cy = ev.clientY - rect.top;
       const z = lastUserZoomRef.current;
       const cellSize = Math.max(1, Math.round((DEFAULT_CELL_SIZE * z) / 100));
-      // account for the DRAG_GHOST_OFFSET right offset when deciding where to place the pattern
       const absoluteX = container.scrollLeft + cx + DRAG_GHOST_OFFSET;
       const absoluteY = container.scrollTop + cy;
       const col = Math.floor(absoluteX / cellSize);
       const row = Math.floor(absoluteY / cellSize);
       applyPatternToGrid(grid, GRID_COLS, GRID_ROWS, draggingPatternRef.current!, col, row, false);
-      // cleanup
       setDraggingPattern(null);
       draggingPatternRef.current = null;
       dragPosRef.current = null;
@@ -528,9 +459,7 @@ export default function App() {
         draw(z);
         rafRef.current = null;
       });
-      // restore cursor
       document.body.style.cursor = "";
-      // remove listeners we added in startPatternDrag (both mouse and pointer variants)
       if (windowHandlersRef.current.move) {
         window.removeEventListener("mousemove", windowHandlersRef.current.move as EventListener);
         window.removeEventListener("pointermove", windowHandlersRef.current.move as EventListener);
@@ -541,23 +470,20 @@ export default function App() {
       }
     };
 
-    return () => {
-      // nothing to remove here: listeners are added/removed by start/stop functions
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {};
   }, []);
 
-  // Drag & drop pattern state
   const [draggingPattern, setDraggingPattern] = useState<keyof typeof patterns | null>(null);
-  const dragPosRef = useRef<{ cx: number; cy: number } | null>(null); // mouse pos relative to container (CSS px)
-  // small helper to render a pattern preview icon using figures.ts data
-  // If cellPixel is provided, each pattern cell is rendered at that CSS pixel size.
+  const dragPosRef = useRef<{ cx: number; cy: number } | null>(null);
+
+  /**
+   * Render a compact visual preview of a named pattern.
+   */
   const renderPatternIcon = (name: keyof typeof patterns, iconSize = 20, color = "#000", cellPixel?: number) => {
      const pat = patterns[name];
      if (!pat || pat.blackCells.length === 0) {
        return <div style={{ width: iconSize, height: iconSize }} />;
      }
-     // compute bounding box of the pattern
      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
      for (const cell of pat.blackCells) {
        if (cell.x < minX) minX = cell.x;
@@ -721,9 +647,7 @@ export default function App() {
         msUserSelect: "none",
       }}
     >
-      {/* DOM ghost that follows the cursor while dragging — anchored at top-left (cursor = reference) */}
       {draggingPattern && ghostPos && (() => {
-        // compute CSS pixels per grid cell according to current zoom
         const z = lastUserZoomRef.current;
         const cellSizeCss = Math.max(1, Math.round((DEFAULT_CELL_SIZE * z) / 100));
         return (
@@ -732,7 +656,7 @@ export default function App() {
               position: "fixed",
               left: ghostPos.x,
               top: ghostPos.y,
-              transform: "translate(0,0)", // anchor top-left to pointer (reference)
+              transform: "translate(0,0)",
               pointerEvents: "none",
               zIndex: 300,
               opacity: 0.98,
@@ -742,13 +666,12 @@ export default function App() {
               filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.35))",
             }}
           >
-            {/* render with per-cell size matching current zoom; use white for contrast */}
+            
             {renderPatternIcon(draggingPattern, 48, "#ffffff", cellSizeCss)}
           </div>
         );
       })()}
 
-      {/* top-left triple-line button + expandable panel */}
       <div
         style={{
           position: "absolute",
@@ -767,7 +690,6 @@ export default function App() {
           aria-expanded={menuOpen}
           title={menuOpen ? "Close menu" : "Open menu"}
           onPointerDown={onMenuPointerDown}
-          // keyboard decl: allow Enter/Space to toggle when focused
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
@@ -790,7 +712,6 @@ export default function App() {
           <img src={menuIcon} alt="Menu" style={{ width: 30, height: 30, display: "block", pointerEvents: "none" }} />
         </button>
 
-        {/* expanded panel: four rectangles */}
         <div
           aria-hidden={!menuOpen}
           style={{
@@ -803,7 +724,7 @@ export default function App() {
             transform: menuOpen ? "translateY(0)" : "translateY(-6px)",
           }}
         >
-          {/* Soup pattern (compact, name above preview) */}
+          
           <div
             role="button"
             tabIndex={0}
@@ -816,7 +737,7 @@ export default function App() {
               gap: 6,
               padding: 6,
               borderRadius: 8,
-              background: "rgba(255,255,255,0.8)", // 0.8 transparent
+              background: "rgba(255,255,255,0.8)",
               color: "#000",
               cursor: "grab",
               boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
@@ -829,7 +750,7 @@ export default function App() {
             <img src={soupIcon} alt="Soup pattern" style={{ width: 28, height: 28, display: "block" }} />
           </div>
 
-          {/* Glider pattern (compact, name above preview) */}
+          
           <div
             role="button"
             tabIndex={0}
@@ -841,7 +762,7 @@ export default function App() {
               gap: 6,
               padding: 6,
               borderRadius: 8,
-              background: "rgba(255,255,255,0.8)", // 0.8 transparent
+              background: "rgba(255,255,255,0.8)",
               color: "#000",
               cursor: "grab",
               boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
@@ -877,7 +798,7 @@ export default function App() {
             <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1, color: "#000" }}>Pentadecathlon</div>
             {renderPatternIcon("pentadecathlon", 28, "#000")}
           </div>
-                    {/* Glider pattern (compact, name above preview) */}
+                    
           <div
             role="button"
             tabIndex={0}
@@ -889,7 +810,7 @@ export default function App() {
               gap: 6,
               padding: 6,
               borderRadius: 8,
-              background: "rgba(255,255,255,0.8)", // 0.8 transparent
+              background: "rgba(255,255,255,0.8)",
               color: "#000",
               cursor: "grab",
               boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
@@ -906,7 +827,6 @@ export default function App() {
 
       
 
-      {/* conteneur scrollable qui montre une surface logique (taille du spacer dépend du zoom) */}
       <div
         ref={containerRef}
         onClick={onContainerClick}
@@ -920,7 +840,7 @@ export default function App() {
           background: "transparent",
         }}
       >
-        {/* spacer crée l'étendue de scroll (la grille "dépassant" le div) */}
+        
         <div
           style={{
             width: spacerWidth,
@@ -929,7 +849,6 @@ export default function App() {
         />
       </div>
 
-      {/* info toast shown on double-click (position relative to the main fixed div) */}
       {infoToast && (
         <div
           role="status"
@@ -975,7 +894,6 @@ export default function App() {
         </div>
       )}
 
-      {/* canvas overlay placé à l'intérieur du même parent et couvrant exactement la zone intérieure */}
       <canvas
         ref={canvasRef}
         style={{
@@ -989,14 +907,13 @@ export default function App() {
           pointerEvents: "none",
         }}
       />
-      {/* barre de zoom (bottom-right, 20px du bas du div principal) - rendu plus compact, step 10% */}
       <div
         style={{
           position: "absolute",
           right: 20,
           bottom: 20,
           display: "flex",
-          flexDirection: "row",      // horizontal layout
+          flexDirection: "row",
           alignItems: "center",
           gap: 8,
           zIndex: 50,
@@ -1005,22 +922,21 @@ export default function App() {
           borderRadius: 6,
         }}
       >
-        {/* left: percent + slider (vertical) */}
+        
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
           <div style={{ color: "#fff", fontSize: 11 }}>{zoomPercent}%</div>
           <input
             type="range"
             min={50}
             max={200}
-            step={10} // move by 10% steps
+            step={10}
             value={zoomPercent}
             onChange={(e) => onZoomChange(Number(e.target.value))}
-            style={{ width: 120}} // smaller slider
+            style={{ width: 120}}
             aria-label="Zoom"
           />
         </div>
-
-        {/* compact reset button on the right of the zoom control */}
+        
         <button
           onClick={() => { setZoomPercent(100); lastUserZoomRef.current = 100; }}
           title="Reset zoom"
@@ -1039,15 +955,14 @@ export default function App() {
             cursor: "pointer",
           }}
         >
-          {/* small SVG reset icon */}
+          
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M21 12a9 9 0 10-3.2 6.6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M21 3v6h-6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
       </div>
-
-      {/* floating play triangle - no background, only the triangle */}
+      
       <div
         style={{
           position: "absolute",
@@ -1059,7 +974,7 @@ export default function App() {
           alignItems: "center",
           padding: 6,
           borderRadius: 6,
-          background: "rgba(255, 255, 255, 0.70)", // semi-transparent wrapper
+          background: "rgba(255, 255, 255, 0.70)",
           pointerEvents: "auto",
         }}
         aria-hidden={false}
@@ -1134,7 +1049,7 @@ export default function App() {
           }}
         />
 
-        {/* reset image inside a button to keep click area consistent */}
+        
         <button
           onClick={() => { triggerButtonEffect("reset"); controllerRef.current.reset(); }}
           title="Reset grid"

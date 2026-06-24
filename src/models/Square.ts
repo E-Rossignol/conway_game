@@ -1,3 +1,7 @@
+/**
+ * Simple model representing a grid cell with integer coordinates and a color
+ * value 0 (white) or 1 (black).
+ */
 export default class Square {
   x: number;
   y: number;

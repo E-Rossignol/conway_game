@@ -1,5 +1,10 @@
 import Square from "../models/Square";
 
+/**
+ * GridManager maintains a grid of `Square` objects and provides helpers
+ * to operate on that logical grid. It supports resizing, iterating, and
+ * several static utilities that operate on a Uint8Array-backed grid.
+ */
 export default class GridManager {
   cellCount: number;
   cols: number;
@@ -7,8 +12,13 @@ export default class GridManager {
   gridMin: number;
   squares: Map<string, Square>;
 
+  /**
+   * Create a GridManager instance.
+   * @param cellCount Logical cell count used to compute gridMin
+   * @param cols Number of columns
+   * @param rows Number of rows
+   */
   constructor(cellCount = 100, cols = 100, rows = 100) {
-    // déléguer l'initialisation à resize pour pouvoir réutiliser plus tard
     this.cellCount = 0;
     this.cols = 0;
     this.rows = 0;
@@ -17,7 +27,9 @@ export default class GridManager {
     this.resize(cellCount, cols, rows);
   }
 
-  // redimensionne / réinitialise la grille (cols x rows)
+  /**
+   * Resize and reinitialize the grid.
+   */
   resize(cellCount = this.cellCount, cols = this.cols, rows = this.rows) {
     this.cellCount = cellCount;
     this.cols = cols;
@@ -27,7 +39,9 @@ export default class GridManager {
     this._init();
   }
 
-  // alias explicite pour l'UI/controller
+  /**
+   * Alias used by UI/controller code to set viewport size.
+   */
   setViewport(cols: number, rows: number) {
     this.resize(this.cellCount, cols, rows);
   }
@@ -69,6 +83,10 @@ export default class GridManager {
     return out;
   }
 
+  /**
+   * Return coordinates of black cells from a Uint8Array-backed grid.
+   * @param grid Buffer of length cols*rows
+   */
   static getBlackKeysOnGrid(grid: Uint8Array, cols: number, rows: number): string[] {
     const blackKeys: string[] = [];
     if (!grid || grid.length !== cols * rows) return blackKeys;
@@ -83,27 +101,26 @@ export default class GridManager {
     return blackKeys;
   }
 
+  /**
+   * Generate random soup inside a bounded region. Returns a function that
+   * fills the provided grid and returns the coordinates that were set to 1.
+   */
   static generateSoup(): (grid: Uint8Array, cols: number, rows: number) => string[] {
-    // returns a function that fills the grid randomly inside the area [50,50) .. [550,550)
-    // but clamps to the actual grid bounds so it is safe on smaller grids.
     return (grid: Uint8Array, cols: number, rows: number) => {
       const out: string[] = [];
       if (!grid || grid.length !== cols * rows) return out;
 
-      // define rectangular region: x in [50, 550), y in [50, 550)
       const startX = 10;
       const startY = 10;
-      const endXExclusive = Math.min(60, cols); // clamp to cols
-      const endYExclusive = Math.min(60, rows); // clamp to rows
+      const endXExclusive = Math.min(60, cols);
+      const endYExclusive = Math.min(60, rows);
 
-      // If region is outside grid, do nothing
       if (startX >= endXExclusive || startY >= endYExclusive) return out;
 
       for (let y = startY; y < endYExclusive; y++) {
         const base = y * cols;
         for (let x = startX; x < endXExclusive; x++) {
           const idx = base + x;
-          // randomize 0 or 1
           grid[idx] = Math.random() < 0.5 ? 1 : 0;
           if (grid[idx]) out.push(`${x},${y}`);
         }
@@ -113,12 +130,12 @@ export default class GridManager {
     };
   }
 
-  // static helper to run the same algorithm directly on a Uint8Array grid
-  // grid: Uint8Array (length = cols * rows), values 0/1
+  /**
+   * Run a simple toggle-based algorithm on a Uint8Array grid.
+   */
   static simpleAlgoOnGrid(grid: Uint8Array, cols: number, rows: number) {
     if (!grid || grid.length !== cols * rows) return;
 
-    // snapshot original black cells
     const blackKeys = new Set<string>();
     for (let r = 0; r < rows; r++) {
       const base = r * cols;
@@ -128,7 +145,6 @@ export default class GridManager {
     }
     if (blackKeys.size === 0) return;
 
-    // count toggles for neighbours (excluding original black squares)
     const toggleCounts = new Map<string, number>();
     const neighbors = [
       [-1, -1],
@@ -150,19 +166,17 @@ export default class GridManager {
         const ny = gy + dy;
         if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) continue;
         const nKey = `${nx},${ny}`;
-        if (blackKeys.has(nKey)) continue; // exclude original blacks
+        if (blackKeys.has(nKey)) continue;
         toggleCounts.set(nKey, (toggleCounts.get(nKey) || 0) + 1);
       }
     }
 
-    // set all original black squares to white
     for (const key of blackKeys) {
       const [cStr, rStr] = key.split(",");
       const idx = Number(rStr) * cols + Number(cStr);
       grid[idx] = 0;
     }
 
-    // apply toggles to neighbours according to parity (odd -> toggle)
     for (const [nKey, count] of toggleCounts.entries()) {
       if ((count & 1) === 1) {
         const [cxStr, ryStr] = nKey.split(",");
@@ -172,8 +186,9 @@ export default class GridManager {
     }
   }
 
-  // static helper to run one Conway "Game of Life" step on a Uint8Array grid
-  // grid: Uint8Array (length = cols * rows), values 0/1
+  /**
+   * Run one Conway Game of Life step on a Uint8Array grid (in-place).
+   */
   static conwayStepOnGrid(grid: Uint8Array, cols: number, rows: number) {
     if (!grid || grid.length !== cols * rows) return;
 
@@ -183,7 +198,6 @@ export default class GridManager {
       const rowBase = r * cols;
       for (let c = 0; c < cols; c++) {
         let neighbors = 0;
-        // count 8 neighbours
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue;
@@ -196,18 +210,14 @@ export default class GridManager {
 
         const idx = rowBase + c;
         const alive = grid[idx] ? 1 : 0;
-        // Conway rules:
-        // - alive with 2 or 3 neighbours stays alive
-        // - dead with exactly 3 neighbours becomes alive
         if (alive) {
-          next[idx] = (neighbors === 2 || neighbors === 3) ? 1 : 0;
+          next[idx] = neighbors === 2 || neighbors === 3 ? 1 : 0;
         } else {
-          next[idx] = (neighbors === 3) ? 1 : 0;
+          next[idx] = neighbors === 3 ? 1 : 0;
         }
       }
     }
 
-    // copy next state back into the provided buffer
     grid.set(next);
   }
 }
