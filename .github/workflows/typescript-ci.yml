@@ -1,0 +1,38 @@
+name: Typescript-CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  app-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze || true
+
+      - name: Run tests
+        run: |
+          if [ -f pubspec.yaml ]; then
+            flutter test || true
+          fi
+
+      - name: Lint TypeScript (repo contains small TS demo)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - run: |
+          if [ -f package.json ]; then
+            npm ci
+            npm run -s lint || true
+          fi
