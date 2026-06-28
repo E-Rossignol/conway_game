@@ -351,8 +351,8 @@ export default function App() {
       flashTimerRef.current = null;
     }, duration);
   };
+  
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
-  const toggleMenu = () => setMenuOpen((v) => !v);
 
   const draggingPatternRef = useRef<keyof typeof patterns | null>(null);
   const windowHandlersRef = useRef<{ move?: (ev: MouseEvent) => void; up?: (ev: MouseEvent) => void }>({});
@@ -360,8 +360,8 @@ export default function App() {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 16, y: 16 });
   const menuDraggingRef = useRef<boolean>(false);
   const menuDragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
-  const menuMoveHandlerRef = useRef<(ev: PointerEvent) => void>();
-  const menuUpHandlerRef = useRef<(ev: PointerEvent) => void>();
+  const menuMoveHandlerRef = useRef<((ev: PointerEvent) => void) | null>(null);
+  const menuUpHandlerRef = useRef<((ev: PointerEvent) => void) | null>(null);
   const isMenuMovedRef = useRef<boolean>(false);
 
   const onMenuPointerDown = (e: React.PointerEvent) => {
@@ -385,7 +385,8 @@ export default function App() {
       setMenuPos({ x: clampX, y: clampY });
     };
 
-    menuUpHandlerRef.current = (ev: PointerEvent) => {
+    menuUpHandlerRef.current = (_ev: PointerEvent) => {
+      console.log(_ev);
       menuDraggingRef.current = false;
       menuDragOffsetRef.current = null;
       if (menuMoveHandlerRef.current) {

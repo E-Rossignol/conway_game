@@ -43,17 +43,24 @@
    ## Quick start
 
    1. Clone the repository:
-      git clone <this-repo-url>
+      
+      `git clone https://github.com/E-Rossignol/conway_game.git`
 
    2. Install dependencies:
-      cd conway_game
-      npm ci
+      - `cd conway_game`
+      - `npm ci`
 
    3. Run the dev server:
-      npm run dev
+      `npm run dev`
 
    4. Build for production:
-      npm run build
+      `npm run build`
+
+   5. Visualize the app:
+      app available on 
+      
+      `http://localhost:5173/`
+
 
    Common scripts in `package.json`:
 
