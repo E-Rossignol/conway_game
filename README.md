@@ -19,13 +19,9 @@
    - Viewport-aware rendering for large grids and performance-friendly redraws.
    - Simple export/import of patterns via JSON copy/paste from the UI.
 
-   ## Demo / Screenshots
+   ## Demonstration
 
-   Include screenshots or a short demo showing:
-
-   - drawing and toggling cells
-   - applying and dragging patterns
-   - autoplay evolving patterns over time
+You can find a demo video here: [https://www.youtube.com/watch?v=f4p7RBu0-4o]
 
    ## Tech stack
 
